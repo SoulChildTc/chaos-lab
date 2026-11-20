@@ -56,14 +56,14 @@ func RunList(ctx context.Context, rt *Runtime, filter string, asJSON bool) (int,
 		return ExitOK, nil
 	}
 
-	nameWidth := 0
+	// Column widths include the header, otherwise "PLUGIN" is wider than "k8s"
+	// and every row falls two cells short of the heading above it.
+	nameWidth := displayWidth("PLUGIN")
+	scWidth := displayWidth("FAULT")
 	for _, e := range entries {
 		if w := displayWidth(e.Plugin); w > nameWidth {
 			nameWidth = w
 		}
-	}
-	scWidth := 0
-	for _, e := range entries {
 		if w := displayWidth(e.Fault); w > scWidth {
 			scWidth = w
 		}
