@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: PLACEHOLDER
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+        tier: web
+    spec:
+      containers:
+        - name: frontend
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: PLACEHOLDER
+spec:
+  # BUG: pods are labelled tier=web, not app=web-frontend. The Service gets no
+  # endpoints at all, so connections hang or are refused by the kube-proxy rule.
+  selector:
+    app: web-frontend
+  ports:
+    - port: 80
+      targetPort: 80

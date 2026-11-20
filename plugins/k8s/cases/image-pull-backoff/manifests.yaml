@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: PLACEHOLDER
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      containers:
+        - name: api
+          # BUG: this tag was never pushed. The registry answers, so the error is
+          # ErrImagePull / ImagePullBackOff rather than a DNS failure.
+          image: nginx:1.27.0-does-not-exist
+          ports:
+            - containerPort: 80

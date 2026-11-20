@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cache
+  namespace: PLACEHOLDER
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cache
+  template:
+    metadata:
+      labels:
+        app: cache
+    spec:
+      containers:
+        - name: cache
+          image: redis:7-alpine
+          resources:
+            requests:
+              # BUG: no single node has 100 CPUs. The scheduler cannot place this
+              # pod, so it stays Pending forever without any error event.
+              cpu: "100"
+              memory: 128Mi

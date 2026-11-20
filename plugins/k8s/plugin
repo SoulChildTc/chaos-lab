@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# chaos-lab k8s plugin: five Kubernetes fault scenarios, one throwaway kind
+# cluster per instance.
+#
+# Talks the chaos-lab plugin protocol: schema / list / up / down / check.
+# No `set -e` on purpose: a check that finds the fault un-fixed must exit 1,
+# not die and be mistaken for a broken check.
+set -uo pipefail
+
+here="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=lib.sh
+. "$here/lib.sh"
+
+cmd="${1:-}"
+shift || true
+
+case_id=""
+instance=""
+args_file=""
+for a in "$@"; do
+  case "$a" in
+    --instance=*) instance="${a#--instance=}" ;;
+    --args=@*)    args_file="${a#--args=@}" ;;
+    --*)          ;;
+    *)            [ -z "$case_id" ] && case_id="$a" ;;
+  esac
+done
+
+json_str() {
+  [ -n "$args_file" ] && [ -f "$args_file" ] || return 0
+  sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$args_file" | head -1
+}
+
+CASE_IDS=(ingress-502 pod-pending image-pull-backoff svc-selector-mismatch pvc-unbound)
+case_title() {
+  case "$1" in
+    ingress-502)          echo "访问站点返回 502" ;;
+    pod-pending)          echo "Pod 一直处于 Pending" ;;
+    image-pull-backoff)   echo "Pod 卡在 ImagePullBackOff" ;;
+    svc-selector-mismatch) echo "Service 没有 endpoints，访问超时" ;;
+    pvc-unbound)          echo "PVC 一直 Pending" ;;
+    *)                    echo "未知场景" ;;
+  esac
+}
+
+claims_for() {
+  # Reusing an external cluster means owning a namespace, not a cluster.
+  if [ -n "${KUBECONFIG_EXTERNAL:-}" ]; then
+    echo "\"kube:$(kubectl config current-context 2>/dev/null || echo external)/lab-$instance\""
+  else
+    echo "\"kind:lab-$instance\""
+  fi
+}
+
+case "$cmd" in
+  schema)
+    cat <<'JSON'
+{"name":"k8s","version":"0.1.0","description":"Kubernetes 故障演练，每个实例一个临时 kind 集群","args":[
+ {"name":"node-image","type":"string","default":"kindest/node:v1.31.0","help":"kind 节点镜像，用于绕过镜像拉取慢"},
+ {"name":"kubeconfig","type":"string","help":"复用已有集群的 kubeconfig；给出时不创建集群，只在该集群里建一个 namespace，down 时只删这个 namespace"}
+]}
+JSON
+    ;;
+
+  list)
+    KUBECONFIG_EXTERNAL="$(json_str kubeconfig)"
+    claims="$(claims_for)"
+    first=1
+    printf '{"cases":['
+    for id in "${CASE_IDS[@]}"; do
+      [ "$first" -eq 1 ] || printf ','
+      first=0
+      printf '{"id":"%s","title":"%s","claims":[%s],"up_timeout":"12m","check_timeout":"20m"}' \
+        "$id" "$(case_title "$id")" "$claims"
+    done
+    printf ']}\n'
+    ;;
+
+  up)
+    [ -n "$case_id" ] || { echo "k8s: 缺少场景名" >&2; exit 2; }
+    [ -n "$instance" ] || { echo "k8s: 缺少 --instance" >&2; exit 2; }
+    case " ${CASE_IDS[*]} " in
+      *" $case_id "*) ;;
+      *) echo "k8s: 未知场景 $case_id" >&2; exit 2 ;;
+    esac
+    need_cmd docker kind kubectl || exit 2
+
+    export NODE_IMAGE="${NODE_IMAGE:-$(json_str node-image)}"
+    [ -n "$NODE_IMAGE" ] || NODE_IMAGE="kindest/node:v1.31.0"
+    export KUBECONFIG_EXTERNAL
+    KUBECONFIG_EXTERNAL="$(json_str kubeconfig)"
+    export K8S_CASE="$case_id"
+    export K8S_NAMESPACE="lab-$instance"
+
+    cluster_up || exit 1
+    load_case "$case_id" || exit 1
+    echo "现象：$(case_title "$case_id")" >&2
+    ;;
+
+  down)
+    [ -n "$instance" ] || { echo "k8s: 缺少 --instance" >&2; exit 2; }
+    export KUBECONFIG_EXTERNAL
+    KUBECONFIG_EXTERNAL="$(json_str kubeconfig)"
+    export K8S_NAMESPACE="lab-$instance"
+    cluster_down
+    ;;
+
+  check)
+    [ -n "$instance" ] || { echo "k8s: 缺少 --instance" >&2; exit 2; }
+    export KUBECONFIG_EXTERNAL
+    KUBECONFIG_EXTERNAL="$(json_str kubeconfig)"
+    export K8S_NAMESPACE="lab-$instance"
+    export K8S_CASE="$case_id"
+    kubeconfig_use || { echo "k8s: 无法连接到集群" >&2; exit 2; }
+    "$here/cases/$case_id/verify.sh"
+    ;;
+
+  *)
+    echo "k8s: 未知子命令 '$cmd'" >&2
+    exit 2
+    ;;
+esac
