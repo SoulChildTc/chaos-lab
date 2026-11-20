@@ -46,6 +46,7 @@ chk_fail "$here/plugin" up nosuchcase --instance=k8s-x-1 --args=@"$args"
 # down on a nonexistent kind cluster is a success (idempotent). Skipped when kind
 # is not installed, since the check would be about the binary, not the logic.
 if command -v kind >/dev/null 2>&1; then
+  echo '{}' > "$args"
   chk "$here/plugin" down ingress-502 --instance=k8s-does-not-exist --args=@"$args"
 fi
 

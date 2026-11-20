@@ -68,11 +68,11 @@ cluster_up() {
   # A crashed earlier attempt may have left the cluster behind. Deleting it first
   # makes up idempotent, so retrying never collides with a half-built cluster.
   if kind get clusters 2>/dev/null | grep -qx "$name"; then
-    echo "k8s: 发现残留集群 $name，先删除" >&2
+    echo "k8s: 发现残留集群 ${name}，先删除" >&2
     kind delete cluster --name "$name" >/dev/null 2>&1 || true
   fi
 
-  echo "k8s: 创建集群 $name（镜像 $image）" >&2
+  echo "k8s: 创建集群 ${name}（镜像 ${image}）" >&2
   local started=$SECONDS
   if ! kind create cluster --name "$name" --image "$image" --wait 180s \
        --kubeconfig "$(kubeconfig_path)" >&2; then
@@ -115,8 +115,51 @@ load_case() {
   [ -d "$case_dir" ] || { echo "k8s: 场景目录不存在：$case_dir" >&2; return 1; }
   export K8S_CASE_DIR="$case_dir"
 
+  preload_images "$case_dir"
+
   if [ -f "$case_dir/inject.sh" ]; then
     ( cd "$case_dir" && bash ./inject.sh ) || return 1
   fi
+  return 0
+}
+
+# preload_images pushes images the local Docker already has into the kind
+# cluster. A kind cluster pulls from the internet, not from the host's image
+# store, so without this every scenario needs working Docker Hub access. Images
+# missing locally are skipped: the cluster then pulls them itself.
+#
+# `kind load docker-image` is not used: on Apple Silicon Docker Desktop saves a
+# multi-platform OCI index and containerd's import then fails on a digest that
+# is not in the archive. Saving one platform first avoids that.
+preload_images() {
+  local case_dir="$1"
+  local list="$case_dir/images.txt"
+  [ -f "$list" ] || return 0
+  have_external && return 0
+
+  local name node platform tmp
+  name="$(cluster_name)"
+  node="$name-control-plane"
+  platform="linux/$(docker version --format '{{.Server.Arch}}' 2>/dev/null | sed 's/x86_64/amd64/;s/aarch64/arm64/')"
+  [ "$platform" = "linux/" ] && platform="linux/amd64"
+
+  while read -r img; do
+    [ -n "$img" ] || continue
+    case "$img" in \#*) continue ;; esac
+    if ! docker image inspect "$img" >/dev/null 2>&1; then
+      echo "k8s: 本地没有 ${img}，交由集群自行拉取" >&2
+      continue
+    fi
+    echo "k8s: 预加载镜像 ${img}" >&2
+    tmp="$(mktemp -t chaoslab-img)"
+    if docker save --platform "$platform" -o "$tmp" "$img" 2>/dev/null &&
+       docker exec -i "$node" ctr --namespace=k8s.io images import - < "$tmp" >/dev/null 2>&1; then
+      rm -f "$tmp"
+      continue
+    fi
+    rm -f "$tmp"
+    # Fall back to kind's own loader for images it can handle.
+    kind load docker-image "$img" --name "$name" >&2 || return 1
+  done < "$list"
   return 0
 }

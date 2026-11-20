@@ -1,0 +1,3 @@
+# The broken tag is deliberately absent: the cluster must fail to pull it. The
+# healthy tag is preloaded so the fix works without registry access.
+nginx:1.27-alpine

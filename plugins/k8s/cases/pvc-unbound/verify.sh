@@ -7,7 +7,7 @@ kubectl get pvc data -n "$ns" >/dev/null 2>&1 || { echo "k8s: 找不到 PVC data
 
 phase="$(kubectl get pvc data -n "$ns" -o jsonpath='{.status.phase}' 2>/dev/null)"
 if [ "$phase" != "Bound" ]; then
-  echo "k8s: 仍未修好（PVC phase=$phase）" >&2
+  echo "k8s: 仍未修好（PVC phase=${phase}）" >&2
   exit 1
 fi
 

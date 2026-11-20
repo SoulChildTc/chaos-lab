@@ -39,9 +39,9 @@ for c in ingress-502 pod-pending image-pull-backoff svc-selector-mismatch pvc-un
     fail=1
   fi
 
-  if kind get clusters 2>/dev/null | grep -q '^lab-'; then
+  if kind get clusters 2>/dev/null | grep -q "^lab-$c-"; then
     echo "FAIL: $c 停止后仍有 kind 集群残留"
-    kind get clusters | grep '^lab-'
+    kind get clusters | grep "^lab-$c-"
     fail=1
   fi
   echo "OK $c"
