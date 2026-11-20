@@ -39,7 +39,7 @@ func TestHelpWorksOnEverySubcommand(t *testing.T) {
 func TestStartHelpShowsPluginFlags(t *testing.T) {
 	rt, _ := newTestRuntime(t)
 	out, err := captureStdout(t, func() (int, error) {
-		return cli.Run(context.Background(), rt, []string{"start", "fake/env", "--help"})
+		return cli.Run(context.Background(), rt, []string{"start", "fake", "--help"})
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -55,42 +55,14 @@ func TestUnknownFlagIsRejected(t *testing.T) {
 	rt, _ := newTestRuntime(t)
 	for _, args := range [][]string{
 		{"list", "--nope"},
-		{"check", "fake/env", "--nope"},
+		{"check", "fake", "--nope"},
 		{"status", "--nope"},
-		{"stop", "fake/env", "--nope"},
+		{"stop", "fake", "--nope"},
 		{"--nope"},
 	} {
 		if code, err := cli.Run(context.Background(), rt, args); code == 0 || err == nil {
 			t.Fatalf("%v must fail, code=%d err=%v", args, code, err)
 		}
-	}
-}
-
-// list accepts a plugin name and only shows that plugin's cases.
-func TestListFiltersByPlugin(t *testing.T) {
-	rt, _ := newTestRuntime(t)
-	installSecondPlugin(t, rt)
-
-	out, err := captureStdout(t, func() (int, error) {
-		return cli.Run(context.Background(), rt, []string{"list", "fake2"})
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	s := string(out)
-	if !strings.Contains(s, "fake2/only") {
-		t.Fatalf("filtered case missing: %q", s)
-	}
-	if strings.Contains(s, "fake/env") {
-		t.Fatalf("filter leaked other plugins: %q", s)
-	}
-}
-
-func TestListUnknownPluginIsUserError(t *testing.T) {
-	rt, _ := newTestRuntime(t)
-	code, err := cli.Run(context.Background(), rt, []string{"list", "nosuch"})
-	if code != 1 || err == nil {
-		t.Fatalf("code=%d err=%v", code, err)
 	}
 }
 

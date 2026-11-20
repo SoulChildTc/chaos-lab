@@ -17,16 +17,12 @@ import (
 
 const defaultUpTimeout = 5 * time.Minute
 
-// RunStart creates one instance of a case: resolve the plugin, merge args,
-// reserve a sequence number, ask the plugin which resources it will claim,
-// reject conflicts, then let the plugin bring the environment up.
-//
-// The reservation, the claim query and the conflict check all happen inside one
-// lock section. They cannot be split: a claim is only known after the plugin
-// answers list, and another start must not slip in between reserving and
-// claiming, or two instances would both hold the same port.
+// RunStart brings one plugin's environment up. The plugin decides which faults
+// it injects and how they share resources; the framework only records the
+// instance, checks for claim collisions and relays the symptom and connection
+// details to the user.
 func RunStart(ctx context.Context, rt *Runtime, ref string, kv map[string]string, asJSON bool) (int, error) {
-	pluginName, caseName, err := splitRef(ref)
+	pluginName, _, err := parsePluginRef(ref)
 	if err != nil {
 		return ExitUserError, err
 	}
@@ -46,50 +42,42 @@ func RunStart(ctx context.Context, rt *Runtime, ref string, kv map[string]string
 	}
 
 	var inst state.Instance
-	var conflict error
 	err = rt.Store.Update(ctx, func(f *state.File) error {
 		Converge(f)
 
 		for _, existing := range f.Instances {
-			if existing.Live && existing.Plugin == pluginName && existing.Case == caseName {
+			if existing.Live && existing.Plugin == pluginName {
 				return fmt.Errorf("%w: %s is already running as %s (up %s); stop it first: chaoslab stop %s",
-					plugin.ErrUserInput, ref, existing.ID, shortDuration(time.Since(existing.StartedAt)), existing.ID)
+					plugin.ErrUserInput, pluginName, existing.ID, shortDuration(time.Since(existing.StartedAt)), existing.ID)
 			}
 		}
 
-		seq := f.Seq[pluginName+"/"+caseName] + 1
-		slug := Slug(pluginName, caseName, seq)
+		seq := f.Seq[pluginName] + 1
+		slug := Slug(pluginName, seq)
 
-		// The plugin renders claims for this exact instance and args. Unknown
-		// prefixes are compared too, so the check stays honest even for claims
-		// the framework cannot verify itself.
-		cases, listErr := lister.List(ctx, slug, args)
+		// The catalogue tells us which resources this instance will hold. Claims
+		// are rendered by the plugin for this exact instance and args.
+		catalog, listErr := lister.List(ctx, slug, args)
 		if listErr != nil {
 			return listErr
 		}
-		theCase, found := findCase(cases, caseName)
-		if !found {
-			return fmt.Errorf("%w: plugin %s has no scenario %q", plugin.ErrUserInput, pluginName, caseName)
-		}
-		if id, claim, clash := claims.ConflictsWith(theCase.Claims, f.Instances); clash {
-			conflict = fmt.Errorf("%w: %s already holds %s", plugin.ErrUserInput, id, claim)
-			return conflict
+		if id, claim, clash := claims.ConflictsWith(catalog.Claims, f.Instances); clash {
+			return fmt.Errorf("%w: %s already holds %s", plugin.ErrUserInput, id, claim)
 		}
 
 		inst = state.Instance{
-			ID:        fmt.Sprintf("%s/%s#%d", pluginName, caseName, seq),
+			ID:        fmt.Sprintf("%s#%d", pluginName, seq),
 			Plugin:    pluginName,
-			Case:      caseName,
 			Slug:      slug,
 			Args:      args,
-			Claims:    theCase.Claims,
+			Claims:    catalog.Claims,
 			Phase:     state.PhaseStarting,
 			Live:      true,
 			PID:       os.Getpid(),
 			StartedAt: time.Now().UTC(),
 		}
 		inst.RunPath = runPath(rt, inst)
-		f.Seq[pluginName+"/"+caseName] = seq
+		f.Seq[pluginName] = seq
 		f.Instances = append(f.Instances, inst)
 		return nil
 	})
@@ -97,11 +85,11 @@ func RunStart(ctx context.Context, rt *Runtime, ref string, kv map[string]string
 		return codeForStartError(err), err
 	}
 
-	timeout := parseTimeout(caseTimeout(ctx, lister, caseName, args, true), defaultUpTimeout)
+	timeout := parseTimeout(caseTimeout(ctx, lister, args), defaultUpTimeout)
 	upCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	_, code, runErr := pluginCall(upCtx, pluginDir, inst, "up")
+	stdout, code, runErr := pluginCall(upCtx, pluginDir, inst, "up")
 	if runErr != nil || code != 0 {
 		msg := describeFailure(runErr, code)
 		if runErr != nil {
@@ -141,17 +129,39 @@ func RunStart(ctx context.Context, rt *Runtime, ref string, kv map[string]string
 		// The environment is up but unrecorded; say so instead of pretending.
 		return ExitPluginErr, fmt.Errorf("%s is up, but recording its state failed: %w", inst.ID, err)
 	}
-
 	inst.Phase = state.PhaseRunning
+
+	// The symptom and connection details come from the plugin. Without them the
+	// user has nothing to investigate and nowhere to connect.
+	result, err := plugin.ParseUpResult(stdout)
+	if err != nil {
+		return ExitPluginErr, err
+	}
+
 	if asJSON {
 		return ExitOK, printJSON(struct {
-			Instance string `json:"instance"`
-			Slug     string `json:"slug"`
-			Phase    string `json:"phase"`
-		}{inst.ID, inst.Slug, string(state.PhaseRunning)})
+			Instance string   `json:"instance"`
+			Slug     string   `json:"slug"`
+			Phase    string   `json:"phase"`
+			Symptom  string   `json:"symptom,omitempty"`
+			Connect  []string `json:"connect,omitempty"`
+		}{inst.ID, inst.Slug, string(state.PhaseRunning), result.Symptom, result.Connect})
 	}
+
 	fmt.Printf("%s %s %s\n", glyphOK(), ok("ready"), dim(inst.ID))
-	fmt.Println(dim("  when you think it is fixed: chaoslab check " + inst.ID))
+	if result.Symptom != "" {
+		fmt.Printf("\n%s\n", head("SYMPTOM"))
+		for _, line := range wrap(result.Symptom, 74) {
+			fmt.Println("  " + line)
+		}
+	}
+	if len(result.Connect) > 0 {
+		fmt.Printf("\n%s\n", head("CONNECT"))
+		for _, c := range result.Connect {
+			fmt.Println("  " + c)
+		}
+	}
+	fmt.Printf("\n%s\n", dim("when you think it is fixed: chaoslab check "+inst.ID))
 	return ExitOK, nil
 }
 
@@ -161,20 +171,9 @@ func codeForStartError(err error) int {
 	switch {
 	case errors.Is(err, plugin.ErrUserInput):
 		return ExitUserError
-	case errors.Is(err, plugin.ErrProtocol):
-		return ExitPluginErr
 	default:
 		return ExitPluginErr
 	}
-}
-
-func findCase(cases []plugin.Case, id string) (plugin.Case, bool) {
-	for _, c := range cases {
-		if c.ID == id {
-			return c, true
-		}
-	}
-	return plugin.Case{}, false
 }
 
 func parseTimeout(s string, fallback time.Duration) time.Duration {
@@ -188,21 +187,14 @@ func parseTimeout(s string, fallback time.Duration) time.Duration {
 	return d
 }
 
-// caseTimeout asks the plugin for this case's timeout. Failures fall back to the
-// default rather than blocking an action the user already asked for.
-func caseTimeout(ctx context.Context, lister *plugin.Lister, caseName string, args map[string]any, up bool) string {
-	cases, err := lister.List(ctx, "", args)
+// caseTimeout asks the plugin how long its environment may take to come up.
+// A failure here falls back to the default rather than blocking the start.
+func caseTimeout(ctx context.Context, lister *plugin.Lister, args map[string]any) string {
+	c, err := lister.List(ctx, "", args)
 	if err != nil {
 		return ""
 	}
-	c, ok := findCase(cases, caseName)
-	if !ok {
-		return ""
-	}
-	if up {
-		return c.UpTimeout
-	}
-	return c.CheckTimeout
+	return c.UpTimeout
 }
 
 func describeFailure(err error, code int) string {

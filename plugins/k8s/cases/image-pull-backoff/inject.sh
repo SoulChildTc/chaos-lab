@@ -5,7 +5,7 @@
 # them before the first pull attempt fails. Treating them as "not reproduced"
 # would fail the build on a healthy cluster.
 set -uo pipefail
-ns="${K8S_NAMESPACE:?}"
+ns="${K8S_NS:-${K8S_NAMESPACE:?}}"
 dir="${K8S_CASE_DIR:?}"
 
 sed "s/PLACEHOLDER/$ns/g" "$dir/manifests.yaml" | kubectl apply -n "$ns" -f - >&2 || exit 1

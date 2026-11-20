@@ -30,54 +30,62 @@ write_args '{"port":0,"fail-up":false,"fail-down":false,"leak-dir":false,"broken
 "$here/plugin" schema --json | grep -q '"name":"fake"' || { echo "FAIL: schema name"; fail=1; }
 "$here/plugin" schema --json | grep -q '"port"' || { echo "FAIL: schema arg port"; fail=1; }
 
-# list renders claims for the given instance
-out="$("$here/plugin" list --json --instance=fake-env-1)"
+# list: one catalogue, one claim set, symptom and connect present
+out="$("$here/plugin" list --json --instance=fake-1)"
+echo "$out" | grep -q '"scenarios"' || { echo "FAIL: no scenarios"; fail=1; }
 echo "$out" | grep -q '"claims":\["dir:' || { echo "FAIL: dir claim"; fail=1; }
-echo "$out" | grep -q 'fake-env-1' || { echo "FAIL: claim not instance-specific"; fail=1; }
+echo "$out" | grep -q 'fake-1' || { echo "FAIL: claim not instance-specific"; fail=1; }
+echo "$out" | grep -q '"symptom"' || { echo "FAIL: no symptom"; fail=1; }
+echo "$out" | grep -q '"connect"' || { echo "FAIL: no connect info"; fail=1; }
 
-# list with a port declares a port claim
+# a port claim appears only when the port is set
 write_args '{"port":18999}'
-"$here/plugin" list --json --instance=fake-env-1 --args=@"$args" | grep -q '"port:18999"' || { echo "FAIL: port claim"; fail=1; }
+"$here/plugin" list --json --instance=fake-1 --args=@"$args" | grep -q '"port:18999"' || { echo "FAIL: port claim"; fail=1; }
 write_args '{"port":0}'
 
-# happy path
-chk "$here/plugin" up env --instance=fake-env-1 --args=@"$args"
-chk "$here/plugin" check env --instance=fake-env-1 --args=@"$args"
-chk "$here/plugin" down env --instance=fake-env-1 --args=@"$args"
+# up prints the symptom and connection JSON on stdout
+up_out="$("$here/plugin" up --instance=fake-1 --args=@"$args" 2>/dev/null)"
+echo "$up_out" | grep -q '"symptom"' || { echo "FAIL: up did not report a symptom"; fail=1; }
+echo "$up_out" | grep -q '"connect"' || { echo "FAIL: up did not report connect info"; fail=1; }
 
-# up is idempotent enough to be retried after a failure
-chk "$here/plugin" up env --instance=fake-env-2 --args=@"$args"
-chk_fail "$here/plugin" check env --instance=fake-env-9 --args=@"$args"   # no env -> exit 2
+chk "$here/plugin" check --instance=fake-1 --args=@"$args"
+chk "$here/plugin" down --instance=fake-1 --args=@"$args"
 
-# broken -> check exits 1, not 0 and not a crash
+# check without an environment is a check error (exit 2), not "not fixed"
+chk "$here/plugin" up --instance=fake-2 --args=@"$args"
+chk_fail "$here/plugin" check --instance=fake-9 --args=@"$args"
+chk "$here/plugin" down --instance=fake-2 --args=@"$args"
+
+# broken -> check exits 1 and still reports per-fault detail
 write_args '{"broken":true}'
-chk "$here/plugin" up env --instance=fake-env-3 --args=@"$args"
-"$here/plugin" check env --instance=fake-env-3 --args=@"$args" >/dev/null 2>&1
-[ $? -eq 1 ] || { echo "FAIL: broken check must exit 1"; fail=1; }
+chk "$here/plugin" up --instance=fake-3 --args=@"$args"
+out="$("$here/plugin" check --instance=fake-3 --args=@"$args" 2>/dev/null)"
+rc=$?
+[ "$rc" -eq 1 ] || { echo "FAIL: broken check must exit 1, got $rc"; fail=1; }
+echo "$out" | grep -q '"passed":false' || { echo "FAIL: broken check must report passed=false"; fail=1; }
+chk "$here/plugin" down --instance=fake-3 --args=@"$args"
 
 # fail-up
 write_args '{"fail-up":true}'
-chk_fail "$here/plugin" up env --instance=fake-env-4 --args=@"$args"
+chk_fail "$here/plugin" up --instance=fake-4 --args=@"$args"
 
 # fail-down
 write_args '{"fail-down":true}'
-chk "$here/plugin" up env --instance=fake-env-5 --args=@"$args"
-chk_fail "$here/plugin" down env --instance=fake-env-5 --args=@"$args"
+chk "$here/plugin" up --instance=fake-5 --args=@"$args"
+chk_fail "$here/plugin" down --instance=fake-5 --args=@"$args"
 
 # leak-dir: down succeeds but leaves the directory behind
 write_args '{"leak-dir":true}'
-chk "$here/plugin" up env --instance=fake-env-6 --args=@"$args"
-chk "$here/plugin" down env --instance=fake-env-6 --args=@"$args"
-[ -d "$tmp/fake-state/fake-env-6" ] || { echo "FAIL: leak-dir did not leak"; fail=1; }
+chk "$here/plugin" up --instance=fake-6 --args=@"$args"
+chk "$here/plugin" down --instance=fake-6 --args=@"$args"
+[ -d "$tmp/fake-state/fake-6" ] || { echo "FAIL: leak-dir did not leak"; fail=1; }
 
-# down is idempotent: running it twice is a success
+# down is idempotent
 write_args '{}'
-chk "$here/plugin" down env --instance=fake-env-1 --args=@"$args"
+chk "$here/plugin" down --instance=fake-1 --args=@"$args"
 
 # unknown subcommand
 chk_fail "$here/plugin" bogus
 
-if [ "$fail" -eq 0 ]; then
-  echo "OK"
-fi
+[ "$fail" -eq 0 ] && echo "OK"
 exit "$fail"

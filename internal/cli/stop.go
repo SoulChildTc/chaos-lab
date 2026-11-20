@@ -43,7 +43,7 @@ func RunStop(ctx context.Context, rt *Runtime, ref string, asJSON bool) (int, er
 		return ExitUserError, err
 	}
 	lister := &plugin.Lister{PluginDir: pluginDir}
-	timeout := parseTimeout(caseTimeout(ctx, lister, inst.Case, inst.Args, true), defaultUpTimeout)
+	timeout := parseTimeout(caseTimeout(ctx, lister, inst.Args), defaultUpTimeout)
 
 	downCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()

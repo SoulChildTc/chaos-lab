@@ -22,7 +22,6 @@ const (
 type Record struct {
 	Instance       string          `json:"instance"`
 	Plugin         string          `json:"plugin"`
-	Case           string          `json:"case"`
 	Args           map[string]any  `json:"args,omitempty"`
 	StartedAt      time.Time       `json:"started_at"`
 	EndedAt        time.Time       `json:"ended_at"`

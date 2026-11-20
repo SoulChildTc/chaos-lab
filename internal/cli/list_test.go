@@ -16,7 +16,12 @@ import (
 func installSecondPlugin(t *testing.T, rt *cli.Runtime) {
 	t.Helper()
 	src := filepath.Join(t.TempDir(), "plugin")
-	body := "#!/bin/sh\ncase \"$1\" in\nschema) echo '{\"name\":\"fake2\",\"args\":[]}' ;;\nlist) echo '{\"cases\":[{\"id\":\"only\",\"title\":\"第二个插件\"}]}' ;;\nesac\n"
+	body := `#!/bin/sh
+case "$1" in
+schema) echo '{"name":"fake2","args":[]}' ;;
+list)   echo '{"scenarios":[{"id":"only","title":"第二个插件的故障"}],"claims":[]}' ;;
+esac
+`
 	if err := os.WriteFile(src, []byte(body), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -38,11 +43,11 @@ func TestListUnionAcrossPlugins(t *testing.T) {
 		t.Fatalf("stdout not JSON: %q (%v)", out, err)
 	}
 	if len(got) != 3 {
-		t.Fatalf("want 3 cases (2 fake + 1 fake2), got %+v", got)
+		t.Fatalf("want 3 faults (2 fake + 1 fake2), got %+v", got)
 	}
 	var sawSecond bool
 	for _, e := range got {
-		if e.Plugin == "fake2" && e.Case == "only" {
+		if e.Plugin == "fake2" && e.Scenario == "only" {
 			sawSecond = true
 		}
 	}
@@ -75,10 +80,10 @@ func TestListJSONEmptyIsArray(t *testing.T) {
 
 func TestListReportsBrokenPluginWithoutDroppingOthers(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	// A plugin that installs fine but is broken now: list must still show the
-	// healthy ones, and say which plugin failed.
 	brokenDir := filepath.Join(rt.PluginsDir, "broken")
-	os.MkdirAll(brokenDir, 0o755)
+	if err := os.MkdirAll(brokenDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	os.WriteFile(filepath.Join(brokenDir, "plugin"), []byte("#!/bin/sh\nexit 1\n"), 0o755)
 
 	out, err := captureStdout(t, func() (int, error) { return cli.RunList(context.Background(), rt, "", true) })
@@ -90,17 +95,45 @@ func TestListReportsBrokenPluginWithoutDroppingOthers(t *testing.T) {
 		t.Fatalf("stdout not JSON: %q", out)
 	}
 	if len(got) != 2 {
-		t.Fatalf("healthy plugin cases lost: %+v", got)
+		t.Fatalf("healthy plugin faults lost: %+v", got)
 	}
 }
 
-func TestListHumanOutputShowsRefs(t *testing.T) {
+func TestListHumanOutputShowsFaults(t *testing.T) {
 	rt, _ := newTestRuntime(t)
 	out, err := captureStdout(t, func() (int, error) { return cli.RunList(context.Background(), rt, "", false) })
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(out), "fake/env") {
-		t.Fatalf("out=%q", out)
+	s := string(out)
+	if !strings.Contains(s, "PLUGIN") || !strings.Contains(s, "env") {
+		t.Fatalf("out=%q", s)
+	}
+}
+
+func TestListFiltersByPlugin(t *testing.T) {
+	rt, _ := newTestRuntime(t)
+	installSecondPlugin(t, rt)
+
+	out, err := captureStdout(t, func() (int, error) {
+		return cli.RunList(context.Background(), rt, "fake2", false)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(out)
+	if !strings.Contains(s, "only") {
+		t.Fatalf("filtered fault missing: %q", s)
+	}
+	if strings.Contains(s, "\tenv") || strings.Contains(s, "  env ") {
+		t.Fatalf("filter leaked other plugins: %q", s)
+	}
+}
+
+func TestListUnknownPluginIsUserError(t *testing.T) {
+	rt, _ := newTestRuntime(t)
+	code, err := cli.RunList(context.Background(), rt, "nosuch", false)
+	if code != 1 || err == nil {
+		t.Fatalf("code=%d err=%v", code, err)
 	}
 }

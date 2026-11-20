@@ -8,21 +8,14 @@
 # exit 1, not die and be mistaken for a broken check.
 set -uo pipefail
 
-here="$(cd "$(dirname "$0")" && pwd)"
-state_root="${CHAOSLAB_HOME:-$HOME/.lab}/fake-state"
-
 cmd="${1:-}"
 shift || true
-
-case_name=""
 instance=""
 args_file=""
 for a in "$@"; do
   case "$a" in
     --instance=*) instance="${a#--instance=}" ;;
     --args=@*)    args_file="${a#--args=@}" ;;
-    --*)          ;;
-    *)            [ -z "$case_name" ] && case_name="$a" ;;
   esac
 done
 
@@ -33,10 +26,8 @@ json_get() {
 
 flag() { [ "$(json_get "$1")" = "true" ]; }
 
+state_root="${CHAOSLAB_HOME:-$HOME/.lab}/fake-state"
 workdir() { printf '%s/%s' "$state_root" "$instance"; }
-emit_report() {
-  printf '{"passed":true,"root_cause":"fake 场景没有任何故障，check 必然通过","clues":["这是测试替身插件"]}\n'
-}
 
 case "$cmd" in
   schema)
@@ -47,7 +38,7 @@ case "$cmd" in
  {"name":"fail-down","type":"bool","default":false,"help":"让 down 失败"},
  {"name":"leak-dir","type":"bool","default":false,"help":"down 成功后仍留下环境目录"},
  {"name":"broken","type":"bool","default":false,"help":"让 check 判定为未修好"},
- {"name":"check-timeout","type":"string","help":"覆盖该场景的 check_timeout"}
+ {"name":"check-timeout","type":"string","help":"覆盖 check_timeout"}
 ]}
 JSON
     ;;
@@ -62,20 +53,18 @@ JSON
     timeout_field=""
     [ -n "$timeout" ] && timeout_field=",\"check_timeout\":\"$timeout\""
     cat <<JSON
-{"cases":[
- {"id":"env","title":"fake 环境已就绪"$timeout_field,"claims":[$claims]},
- {"id":"other","title":"fake 第二个场景"$timeout_field,"claims":[$claims]}
-]}
+{"scenarios":[
+ {"id":"env","title":"示例场景一：什么都不会坏"},
+ {"id":"other","title":"示例场景二：同样什么都不会坏"}
+ ],"claims":[$claims],"symptom":"这里有一个假环境，什么故障都没有。","connect":["目录：$dir"]$timeout_field}
 JSON
     ;;
 
   up)
-    [ -n "$case_name" ] || { echo "fake: missing case" >&2; exit 2; }
     [ -n "$instance" ] || { echo "fake: missing --instance" >&2; exit 2; }
     flag fail-up && { echo "fake: up failed on purpose" >&2; exit 1; }
     mkdir -p "$(workdir)" || exit 1
-    echo "fake: $case_name 环境已就绪" >&2
-    echo "fake: 现象描述：什么都没有发生，因为这是测试替身" >&2
+    printf '{"symptom":"这里有一个假环境，什么故障都没有。","connect":["目录：%s"]}\n' "$(workdir)"
     ;;
 
   down)
@@ -89,9 +78,13 @@ JSON
     ;;
 
   check)
-    flag broken && { echo "fake: 还没修好" >&2; exit 1; }
+    if flag broken; then
+      printf '{"passed":false,"cases":[{"id":"env","passed":false}]}\n'
+      echo "fake: 还没修好" >&2
+      exit 1
+    fi
     [ -d "$(workdir)" ] || { echo "fake: 环境不存在，无法检查" >&2; exit 2; }
-    emit_report
+    printf '{"passed":true,"root_cause":"fake 场景没有任何故障，check 必然通过","clues":["这是测试替身插件"]}\n'
     ;;
 
   *)

@@ -188,3 +188,12 @@ func pad(s string, width int) string {
 	}
 	return s + " "
 }
+
+// repeat is strings.Repeat with a guard against negative counts, which the
+// alignment helpers can produce for an empty cell.
+func repeat(s string, n int) string {
+	if n <= 0 {
+		return ""
+	}
+	return strings.Repeat(s, n)
+}

@@ -46,10 +46,10 @@ func runRecords(t *testing.T, home string) []runlog.Record {
 
 func TestCheckPassWritesRunRecord(t *testing.T) {
 	rt, home := newTestRuntime(t)
-	if code, err := cli.RunStart(context.Background(), rt, "fake/env", nil, true); code != 0 {
+	if code, err := cli.RunStart(context.Background(), rt, "fake", nil, true); code != 0 {
 		t.Fatalf("start: %d %v", code, err)
 	}
-	code, err := cli.RunCheck(context.Background(), rt, "fake/env", false, true)
+	code, err := cli.RunCheck(context.Background(), rt, "fake", false, true)
 	if err != nil || code != 0 {
 		t.Fatalf("code=%d err=%v", code, err)
 	}
@@ -57,15 +57,15 @@ func TestCheckPassWritesRunRecord(t *testing.T) {
 	if len(recs) != 1 || recs[0].Result != runlog.ResultPassed || len(recs[0].Report) == 0 {
 		t.Fatalf("%+v", recs)
 	}
-	if recs[0].Instance != "fake/env#1" || recs[0].Checks != 1 {
+	if recs[0].Instance != "fake#1" || recs[0].Checks != 1 {
 		t.Fatalf("%+v", recs[0])
 	}
 }
 
 func TestCheckPassMarksInstancePassedButLive(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", nil, true)
-	cli.RunCheck(context.Background(), rt, "fake/env", false, true)
+	cli.RunStart(context.Background(), rt, "fake", nil, true)
+	cli.RunCheck(context.Background(), rt, "fake", false, true)
 	f, _ := rt.Store.Read(context.Background())
 	in := f.Instances[0]
 	if in.Phase != state.PhasePassed || !in.Live {
@@ -75,8 +75,8 @@ func TestCheckPassMarksInstancePassedButLive(t *testing.T) {
 
 func TestCheckNotFixedReturnsTwo(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", map[string]string{"broken": "true"}, true)
-	code, err := cli.RunCheck(context.Background(), rt, "fake/env", false, true)
+	cli.RunStart(context.Background(), rt, "fake", map[string]string{"broken": "true"}, true)
+	code, err := cli.RunCheck(context.Background(), rt, "fake", false, true)
 	if code != 2 || err != nil {
 		t.Fatalf("code=%d err=%v", code, err)
 	}
@@ -91,8 +91,8 @@ func TestCheckNotFixedReturnsTwo(t *testing.T) {
 
 func TestCheckNotFixedWritesNoRecord(t *testing.T) {
 	rt, home := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", map[string]string{"broken": "true"}, true)
-	cli.RunCheck(context.Background(), rt, "fake/env", false, true)
+	cli.RunStart(context.Background(), rt, "fake", map[string]string{"broken": "true"}, true)
+	cli.RunCheck(context.Background(), rt, "fake", false, true)
 	if recs := runRecords(t, home); len(recs) != 0 {
 		t.Fatalf("a failed attempt is not a final result: %+v", recs)
 	}
@@ -100,9 +100,9 @@ func TestCheckNotFixedWritesNoRecord(t *testing.T) {
 
 func TestCheckProtocolErrorReturnsThree(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", nil, true)
+	cli.RunStart(context.Background(), rt, "fake", nil, true)
 	overwritePlugin(t, rt, "fake", "#!/bin/sh\ncase \"$1\" in check) exit 0;; esac\nexit 1\n")
-	code, _ := cli.RunCheck(context.Background(), rt, "fake/env", false, true)
+	code, _ := cli.RunCheck(context.Background(), rt, "fake", false, true)
 	if code != 3 {
 		t.Fatalf("want 3 for exit 0 with no report, got %d", code)
 	}
@@ -110,9 +110,9 @@ func TestCheckProtocolErrorReturnsThree(t *testing.T) {
 
 func TestCheckBrokenExitCodeTwoIsPluginError(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", nil, true)
+	cli.RunStart(context.Background(), rt, "fake", nil, true)
 	overwritePlugin(t, rt, "fake", "#!/bin/sh\ncase \"$1\" in check) echo 'cluster unreachable' >&2; exit 2;; esac\nexit 1\n")
-	code, _ := cli.RunCheck(context.Background(), rt, "fake/env", false, true)
+	code, _ := cli.RunCheck(context.Background(), rt, "fake", false, true)
 	if code != 3 {
 		t.Fatalf("want 3, got %d", code)
 	}
@@ -127,7 +127,7 @@ func TestCheckHangIsKilled(t *testing.T) {
 		t.Skip("waits out the per-call timeout")
 	}
 	rt, _ := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", nil, true)
+	cli.RunStart(context.Background(), rt, "fake", nil, true)
 	overwritePlugin(t, rt, "fake", "#!/bin/sh\ncase \"$1\" in check) sleep 600;; esac\nexit 1\n")
 
 	// Shrink the per-call limit so the test does not wait two minutes. The
@@ -136,7 +136,7 @@ func TestCheckHangIsKilled(t *testing.T) {
 	t.Cleanup(func() { cli.SetCheckTimeoutForTest(0) })
 
 	start := time.Now()
-	code, err := cli.RunCheck(context.Background(), rt, "fake/env", false, true)
+	code, err := cli.RunCheck(context.Background(), rt, "fake", false, true)
 	if code != 3 || err == nil {
 		t.Fatalf("code=%d err=%v", code, err)
 	}
@@ -147,9 +147,9 @@ func TestCheckHangIsKilled(t *testing.T) {
 
 func TestCheckJSONReportMatchesExitCode(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", nil, true)
+	cli.RunStart(context.Background(), rt, "fake", nil, true)
 	out, err := captureStdout(t, func() (int, error) {
-		return cli.RunCheck(context.Background(), rt, "fake/env", false, true)
+		return cli.RunCheck(context.Background(), rt, "fake", false, true)
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -171,9 +171,9 @@ func TestCheckJSONReportMatchesExitCode(t *testing.T) {
 
 func TestCheckSecondPassUpdatesSameRecord(t *testing.T) {
 	rt, home := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", nil, true)
-	cli.RunCheck(context.Background(), rt, "fake/env", false, true)
-	cli.RunCheck(context.Background(), rt, "fake/env", false, true)
+	cli.RunStart(context.Background(), rt, "fake", nil, true)
+	cli.RunCheck(context.Background(), rt, "fake", false, true)
+	cli.RunCheck(context.Background(), rt, "fake", false, true)
 	if recs := runRecords(t, home); len(recs) != 1 {
 		t.Fatalf("want one record for one instance, got %d", len(recs))
 	}
@@ -181,8 +181,8 @@ func TestCheckSecondPassUpdatesSameRecord(t *testing.T) {
 
 func TestCheckWatchTimesOutAndRecordsTimeout(t *testing.T) {
 	rt, home := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", map[string]string{"broken": "true", "check-timeout": "2s"}, true)
-	code, _ := cli.RunCheck(context.Background(), rt, "fake/env", true, true)
+	cli.RunStart(context.Background(), rt, "fake", map[string]string{"broken": "true", "check-timeout": "2s"}, true)
+	code, _ := cli.RunCheck(context.Background(), rt, "fake", true, true)
 	if code != 2 {
 		t.Fatalf("want 2, got %d", code)
 	}
@@ -194,8 +194,8 @@ func TestCheckWatchTimesOutAndRecordsTimeout(t *testing.T) {
 
 func TestCheckWatchStopsAsSoonAsItPasses(t *testing.T) {
 	rt, home := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", map[string]string{"check-timeout": "60s"}, true)
-	code, err := cli.RunCheck(context.Background(), rt, "fake/env", true, true)
+	cli.RunStart(context.Background(), rt, "fake", map[string]string{"check-timeout": "60s"}, true)
+	code, err := cli.RunCheck(context.Background(), rt, "fake", true, true)
 	if code != 0 || err != nil {
 		t.Fatalf("code=%d err=%v", code, err)
 	}
@@ -215,10 +215,10 @@ func TestCheckUnknownRefIsUserError(t *testing.T) {
 
 func TestCheckDoesNotPassWhenWatchCancelled(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", map[string]string{"broken": "true", "check-timeout": "60s"}, true)
+	cli.RunStart(context.Background(), rt, "fake", map[string]string{"broken": "true", "check-timeout": "60s"}, true)
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
-	code, _ := cli.RunCheck(ctx, rt, "fake/env", true, true)
+	code, _ := cli.RunCheck(ctx, rt, "fake", true, true)
 	if code == 0 {
 		t.Fatal("cancelled watch must not report success")
 	}

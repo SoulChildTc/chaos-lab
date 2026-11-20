@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # verify: exit 0 only when the claim is Bound and the pod using it is running.
 set -uo pipefail
-ns="${K8S_NAMESPACE:?}"
+ns="${K8S_NS:-${K8S_NAMESPACE:?}}"
 
 kubectl get pvc data -n "$ns" >/dev/null 2>&1 || { echo "k8s: 找不到 PVC data" >&2; exit 2; }
 

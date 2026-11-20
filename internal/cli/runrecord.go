@@ -45,7 +45,6 @@ func writeRunRecord(rt *Runtime, inst state.Instance, result string, report []by
 	_ = runlog.Write(path, runlog.Record{
 		Instance:       inst.ID,
 		Plugin:         inst.Plugin,
-		Case:           inst.Case,
 		Args:           inst.Args,
 		StartedAt:      inst.StartedAt,
 		EndedAt:        end,

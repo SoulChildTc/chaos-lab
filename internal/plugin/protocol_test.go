@@ -71,33 +71,33 @@ for a in "$@"; do
 done
 has=missing
 grep -q '"a":"b"' "$file" && has=present
-printf '{"cases":[{"id":"c1","title":"%s|%s"}]}' "$inst" "$has"
+printf '{"scenarios":[{"id":"c1","title":"%s|%s"}],"claims":[]}' "$inst" "$has"
 `)
-	cases, err := (&plugin.Lister{PluginDir: dir}).List(context.Background(), "slug-1", map[string]any{"a": "b"})
-	if err != nil || len(cases) != 1 {
-		t.Fatalf("cases=%+v err=%v", cases, err)
+	catalog, err := (&plugin.Lister{PluginDir: dir}).List(context.Background(), "slug-1", map[string]any{"a": "b"})
+	if err != nil || len(catalog.Scenarios) != 1 {
+		t.Fatalf("catalog=%+v err=%v", catalog, err)
 	}
-	if cases[0].Title != "slug-1|present" {
-		t.Fatalf("title=%q", cases[0].Title)
+	if catalog.Scenarios[0].Title != "slug-1|present" {
+		t.Fatalf("title=%q", catalog.Scenarios[0].Title)
 	}
 }
 
 func TestListOmitsArgsFileWhenNoArgs(t *testing.T) {
 	dir := writePlugin(t, `#!/bin/sh
 for a in "$@"; do
-  case "$a" in --args=*) echo '{"cases":[{"id":"bad_args_passed","title":""}]}'; exit 0;; esac
+  case "$a" in --args=*) echo '{"scenarios":[{"id":"bad_args_passed","title":""}],"claims":[]}'; exit 0;; esac
 done
-echo '{"cases":[{"id":"ok","title":"t"}]}'
+echo '{"scenarios":[{"id":"ok","title":"t"}],"claims":[]}'
 `)
-	cases, err := (&plugin.Lister{PluginDir: dir}).List(context.Background(), "", nil)
-	if err != nil || len(cases) != 1 || cases[0].ID != "ok" {
-		t.Fatalf("cases=%+v err=%v", cases, err)
+	catalog, err := (&plugin.Lister{PluginDir: dir}).List(context.Background(), "", nil)
+	if err != nil || len(catalog.Scenarios) != 1 || catalog.Scenarios[0].ID != "ok" {
+		t.Fatalf("catalog=%+v err=%v", catalog, err)
 	}
 }
 
 func TestListRejectsBadCaseID(t *testing.T) {
 	dir := writePlugin(t, `#!/bin/sh
-echo '{"cases":[{"id":"Bad_ID","title":"t"}]}'
+echo '{"scenarios":[{"id":"Bad_ID","title":"t"}],"claims":[]}'
 `)
 	_, err := (&plugin.Lister{PluginDir: dir}).List(context.Background(), "", nil)
 	if !errors.Is(err, plugin.ErrProtocol) {

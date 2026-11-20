@@ -77,20 +77,20 @@ func TestPluginInstallRejectsBadSource(t *testing.T) {
 
 func TestPluginUninstallRefusesWhenLive(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", nil, true)
+	cli.RunStart(context.Background(), rt, "fake", nil, true)
 	code, err := cli.RunPlugin(context.Background(), rt, "uninstall", []string{"fake"}, false)
 	if code != 1 || err == nil {
 		t.Fatalf("code=%d err=%v", code, err)
 	}
-	if !strings.Contains(err.Error(), "fake/env#1") {
+	if !strings.Contains(err.Error(), "fake#1") {
 		t.Fatalf("must name the blocking instance: %v", err)
 	}
 }
 
 func TestPluginUninstallWorksAfterStop(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", nil, true)
-	cli.RunStop(context.Background(), rt, "fake/env", false)
+	cli.RunStart(context.Background(), rt, "fake", nil, true)
+	cli.RunStop(context.Background(), rt, "fake", false)
 	if code, err := cli.RunPlugin(context.Background(), rt, "uninstall", []string{"fake"}, false); code != 0 || err != nil {
 		t.Fatalf("code=%d err=%v", code, err)
 	}
@@ -150,7 +150,7 @@ func TestMainNoArgsPrintsUsage(t *testing.T) {
 
 func TestMainDispatchesStatusWithJSONAnywhere(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", nil, true)
+	cli.RunStart(context.Background(), rt, "fake", nil, true)
 	out, err := captureStdout(t, func() (int, error) {
 		return cli.Run(context.Background(), rt, []string{"--json", "status"})
 	})

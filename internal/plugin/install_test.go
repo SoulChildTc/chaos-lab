@@ -134,7 +134,7 @@ func TestValidateWarnsUnknownClaimPrefix(t *testing.T) {
 	src := writePluginDir(t, `#!/bin/sh
 case "$1" in
 schema) echo '{"name":"fake","args":[]}' ;;
-list)   echo '{"cases":[{"id":"c","title":"t","claims":["remote:jenkins"]}]}' ;;
+list)   echo '{"scenarios":[{"id":"c","title":"t"}],"claims":["remote:jenkins"]}' ;;
 esac
 `)
 	warn, err := plugin.Validate(context.Background(), src)
@@ -150,7 +150,7 @@ func TestValidateAcceptsKnownPrefixes(t *testing.T) {
 	src := writePluginDir(t, `#!/bin/sh
 case "$1" in
 schema) echo '{"name":"fake","args":[]}' ;;
-list)   echo '{"cases":[{"id":"c","title":"t","claims":["port:1","dir:/x","kind:y","docker:network:z"]}]}' ;;
+list)   echo '{"scenarios":[{"id":"c","title":"t"}],"claims":["port:1","dir:/x","kind:y","docker:network:z"]}' ;;
 esac
 `)
 	warn, err := plugin.Validate(context.Background(), src)

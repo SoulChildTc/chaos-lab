@@ -66,13 +66,13 @@ func TestUninstallOnlyRemovesInsidePluginsDir(t *testing.T) {
 
 func TestResolveRefusesNonLiveForStop(t *testing.T) {
 	instances := []state.Instance{
-		{ID: "fake/env#1", Plugin: "fake", Case: "env", Live: false, Phase: state.PhaseStopped},
+		{ID: "fake#1", Plugin: "fake", Live: false, Phase: state.PhaseStopped},
 	}
-	_, err := cli.Resolve(instances, "fake/env")
+	_, err := cli.Resolve(instances, "fake")
 	if !errors.Is(err, plugin.ErrUserInput) {
 		t.Fatalf("want ErrUserInput, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "fake/env") {
+	if !strings.Contains(err.Error(), "fake") {
 		t.Fatalf("error must name the ref: %v", err)
 	}
 }

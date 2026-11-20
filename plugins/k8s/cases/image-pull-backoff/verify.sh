@@ -3,7 +3,7 @@
 # Pod would keep seeing the old failing Pod after an image change creates a new
 # ReplicaSet, so readiness comes from the Deployment.
 set -uo pipefail
-ns="${K8S_NAMESPACE:?}"
+ns="${K8S_NS:-${K8S_NAMESPACE:?}}"
 
 kubectl get deploy api -n "$ns" >/dev/null 2>&1 || { echo "k8s: 找不到 Deployment api" >&2; exit 2; }
 

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# chaos-lab k8s plugin: five Kubernetes fault scenarios, one throwaway kind
-# cluster per instance.
+# chaos-lab k8s plugin: one kind cluster per instance, every supported fault
+# injected into it at once.
 #
 # Talks the chaos-lab plugin protocol: schema / list / up / down / check.
-# No `set -e` on purpose: a check that finds the fault un-fixed must exit 1,
+# No `set -e` on purpose: a check that finds the faults un-fixed must exit 1,
 # not die and be mistaken for a broken check.
 set -uo pipefail
 
@@ -14,15 +14,12 @@ here="$(cd "$(dirname "$0")" && pwd)"
 cmd="${1:-}"
 shift || true
 
-case_id=""
 instance=""
 args_file=""
 for a in "$@"; do
   case "$a" in
     --instance=*) instance="${a#--instance=}" ;;
     --args=@*)    args_file="${a#--args=@}" ;;
-    --*)          ;;
-    *)            [ -z "$case_id" ] && case_id="$a" ;;
   esac
 done
 
@@ -31,80 +28,82 @@ json_str() {
   sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$args_file" | head -1
 }
 
+# Every fault this plugin injects, in one cluster.
 CASE_IDS=(ingress-502 pod-pending image-pull-backoff svc-selector-mismatch pvc-unbound)
+
 case_title() {
   case "$1" in
-    ingress-502)          echo "访问站点返回 502" ;;
-    pod-pending)          echo "Pod 一直处于 Pending" ;;
-    image-pull-backoff)   echo "Pod 卡在 ImagePullBackOff" ;;
+    ingress-502)           echo "访问站点返回 502" ;;
+    pod-pending)           echo "Pod 一直处于 Pending" ;;
+    image-pull-backoff)    echo "Pod 卡在 ImagePullBackOff" ;;
     svc-selector-mismatch) echo "Service 没有 endpoints，访问超时" ;;
-    pvc-unbound)          echo "PVC 一直 Pending" ;;
-    *)                    echo "未知场景" ;;
+    pvc-unbound)           echo "PVC 一直 Pending" ;;
+    *)                     echo "未知场景" ;;
   esac
-}
-
-claims_for() {
-  # Reusing an external cluster means owning a namespace, not a cluster.
-  if [ -n "${KUBECONFIG_EXTERNAL:-}" ]; then
-    # The context must come from the user-supplied kubeconfig, not the ambient
-    # one, or two instances could land in the same cluster and never conflict.
-    echo "\"kube:$(KUBECONFIG="$KUBECONFIG_EXTERNAL" kubectl config current-context 2>/dev/null || echo external)/lab-$instance\""
-  else
-    echo "\"kind:lab-$instance\""
-  fi
 }
 
 case "$cmd" in
   schema)
     cat <<'JSON'
-{"name":"k8s","version":"0.1.0","description":"Kubernetes 故障演练，每个实例一个临时 kind 集群","args":[
- {"name":"node-image","type":"string","default":"kindest/node:v1.31.0","help":"kind 节点镜像，用于绕过镜像拉取慢"},
- {"name":"kubeconfig","type":"string","help":"复用已有集群的 kubeconfig；给出时不创建集群，只在该集群里建一个 namespace，down 时只删这个 namespace"}
+{"name":"k8s","version":"0.2.0","description":"Kubernetes 故障演练，每个实例一个临时 kind 集群","args":[
+ {"name":"node-image","type":"string","default":"kindest/node:v1.31.0","help":"kind 节点镜像，网络慢时指向本机已有的镜像"},
+ {"name":"kubeconfig","type":"string","help":"复用已有集群的 kubeconfig；给出时不创建集群，只建 namespace"}
 ]}
 JSON
     ;;
 
   list)
     KUBECONFIG_EXTERNAL="$(json_str kubeconfig)"
-    claims="$(claims_for)"
-    first=1
-    printf '{"cases":['
+    if [ -n "$KUBECONFIG_EXTERNAL" ]; then
+      claims="\"kube:$(KUBECONFIG="$KUBECONFIG_EXTERNAL" kubectl config current-context 2>/dev/null || echo external)/lab-$instance\""
+    else
+      claims="\"kind:lab-$instance\""
+    fi
+
+    scenarios=""
     for id in "${CASE_IDS[@]}"; do
-      [ "$first" -eq 1 ] || printf ','
-      first=0
-      printf '{"id":"%s","title":"%s","claims":[%s],"up_timeout":"12m","check_timeout":"20m"}' \
-        "$id" "$(case_title "$id")" "$claims"
+      [ -n "$scenarios" ] && scenarios="$scenarios,"
+      scenarios="$scenarios{\"id\":\"$id\",\"title\":\"$(case_title "$id")\"}"
     done
-    printf ']}\n'
+
+    cat <<JSON
+{"scenarios":[$scenarios],"claims":[$claims],"up_timeout":"20m","check_timeout":"30m",
+ "symptom":"一个刚部署的站点访问返回 502；同时有些 Pod 起不来、有些 PVC 挂不上。集群里一共埋了 ${#CASE_IDS[@]} 处问题。",
+ "connect":["export KUBECONFIG=${KUBECONFIG_HINT:-~/.lab/k8s-state/PLACEHOLDER.kubeconfig}","namespace: lab-PLACEHOLDER","先看 kubectl get pods -A 和 kubectl get pvc -A"]}
+JSON
     ;;
 
   up)
-    [ -n "$case_id" ] || { echo "k8s: 缺少场景名" >&2; exit 2; }
     [ -n "$instance" ] || { echo "k8s: 缺少 --instance" >&2; exit 2; }
-    case " ${CASE_IDS[*]} " in
-      *" $case_id "*) ;;
-      *) echo "k8s: 未知场景 $case_id" >&2; exit 2 ;;
-    esac
     need_cmd docker kind kubectl || exit 2
 
     export NODE_IMAGE="${NODE_IMAGE:-$(json_str node-image)}"
     [ -n "$NODE_IMAGE" ] || NODE_IMAGE="kindest/node:v1.31.0"
     export KUBECONFIG_EXTERNAL
     KUBECONFIG_EXTERNAL="$(json_str kubeconfig)"
-    export K8S_CASE="$case_id"
     export K8S_NAMESPACE="lab-$instance"
 
     cluster_up || exit 1
-    load_case "$case_id" || exit 1
-    echo "现象：$(case_title "$case_id")" >&2
+
+    # Each fault gets its own namespace so the user can tell the deployments
+    # apart, but they all share the one cluster this instance owns.
+    for id in "${CASE_IDS[@]}"; do
+      export K8S_CASE="$id"
+      export K8S_NS="${K8S_NAMESPACE}-$id"
+      kubectl create namespace "$K8S_NS" >/dev/null 2>&1 || true
+      load_case "$id" || exit 1
+    done
+
+    # The symptom and the connection details are what the user gets. Which
+    # faults were injected is deliberately not reported.
+    cat <<JSON
+{"symptom":"一个刚部署的站点访问返回 502；同时有些 Pod 起不来、有些 PVC 挂不上。集群里一共埋了 ${#CASE_IDS[@]} 处问题。",
+ "connect":["export KUBECONFIG=$(kubeconfig_path)","namespace 前缀: ${K8S_NAMESPACE}-<故障名>","先看 kubectl get pods -A 和 kubectl get pvc -A"]}
+JSON
     ;;
 
   down)
     [ -n "$instance" ] || { echo "k8s: 缺少 --instance" >&2; exit 2; }
-    case " ${CASE_IDS[*]} " in
-      *" ${case_id:-x} "*) ;;
-      *) echo "k8s: 未知场景 ${case_id:-<空>}" >&2; exit 2 ;;
-    esac
     export KUBECONFIG_EXTERNAL
     KUBECONFIG_EXTERNAL="$(json_str kubeconfig)"
     export K8S_NAMESPACE="lab-$instance"
@@ -113,16 +112,45 @@ JSON
 
   check)
     [ -n "$instance" ] || { echo "k8s: 缺少 --instance" >&2; exit 2; }
-    case " ${CASE_IDS[*]} " in
-      *" ${case_id:-x} "*) ;;
-      *) echo "k8s: 未知场景 ${case_id:-<空>}" >&2; exit 2 ;;
-    esac
     export KUBECONFIG_EXTERNAL
     KUBECONFIG_EXTERNAL="$(json_str kubeconfig)"
     export K8S_NAMESPACE="lab-$instance"
-    export K8S_CASE="$case_id"
     kubeconfig_use || { echo "k8s: 无法连接到集群" >&2; exit 2; }
-    "$here/cases/$case_id/verify.sh"
+
+    total=0
+    ok=0
+    report=""
+    for id in "${CASE_IDS[@]}"; do
+      total=$((total + 1))
+      export K8S_CASE="$id"
+      export K8S_NS="${K8S_NAMESPACE}-$id"
+      out="$("$here/cases/$id/verify.sh" 2>/dev/null)"
+      rc=$?
+      case "$rc" in
+        0)
+          ok=$((ok + 1))
+          report="$report{\"id\":\"$id\",\"passed\":true},"
+          ;;
+        1)
+          report="$report{\"id\":\"$id\",\"passed\":false},"
+          ;;
+        *)
+          echo "k8s: $id 的检查出错（退出码 $rc）" >&2
+          exit 2
+          ;;
+      esac
+    done
+    report="${report%,}"
+
+    if [ "$ok" -eq "$total" ]; then
+      cat <<JSON
+{"passed":true,"cases":[$report],"root_cause":"你修好的是这几处：Service targetPort 指向了没有监听的端口、Pod 请求了节点放不下的 CPU、镜像 tag 不存在、Service selector 与 Pod 标签不匹配、PVC 引用了不存在的 StorageClass。","clues":["先按 Pod 状态分组：Pending / ImagePullBackOff 各自原因不同","kubectl describe 的 Events 里通常直接写着原因","PVC 的问题要看 kubectl get pvc 的事件，不是 kubectl get pods"]}
+JSON
+      exit 0
+    fi
+    echo "k8s: 还有 $((total - ok)) / $total 处没修好" >&2
+    printf '{"passed":false,"cases":[%s]}\n' "$report"
+    exit 1
     ;;
 
   *)

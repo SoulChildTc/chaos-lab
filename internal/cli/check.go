@@ -63,10 +63,8 @@ func RunCheck(ctx context.Context, rt *Runtime, ref string, watch bool, asJSON b
 	}
 
 	window := defaultCheckWindow
-	if cases, err := rt.Lister(inst.Plugin).List(ctx, inst.Slug, inst.Args); err == nil {
-		if c, ok := findCase(cases, inst.Case); ok {
-			window = parseTimeout(c.CheckTimeout, defaultCheckWindow)
-		}
+	if catalog, err := rt.Lister(inst.Plugin).List(ctx, inst.Slug, inst.Args); err == nil {
+		window = parseTimeout(catalog.CheckTimeout, defaultCheckWindow)
 	}
 
 	deadline := time.Now().Add(window)
@@ -180,7 +178,20 @@ func runCheckOnce(ctx context.Context, rt *Runtime, inst state.Instance) (CheckO
 		return CheckOutput{Passed: true, Report: json.RawMessage(stdout)}, ExitOK, nil
 	case 1:
 		rt.markAttempt(ctx, inst)
-		return CheckOutput{Passed: false, Message: "not fixed yet"}, ExitNotPassed, nil
+		// The plugin may explain which parts are still broken. Keep that payload
+		// verbatim: the framework does not know what a plugin's faults are.
+		out := CheckOutput{Passed: false, Message: "not fixed yet"}
+		if len(stdout) > 0 {
+			var partial struct {
+				Passed bool   `json:"passed"`
+				Report string `json:"-"`
+			}
+			if json.Unmarshal(stdout, &partial) == nil {
+				out.Report = json.RawMessage(stdout)
+			}
+			out.Message = summarise(stdout)
+		}
+		return out, ExitNotPassed, nil
 	case 2:
 		return CheckOutput{Message: "the check itself failed"}, ExitPluginErr,
 			fmt.Errorf("%s: check failed (exit 2), the environment may be unreachable", inst.ID)
@@ -188,6 +199,34 @@ func runCheckOnce(ctx context.Context, rt *Runtime, inst state.Instance) (CheckO
 		return CheckOutput{Message: fmt.Sprintf("check exited %d", code)}, ExitPluginErr,
 			fmt.Errorf("%w: %s: check exited %d", plugin.ErrProtocol, inst.ID, code)
 	}
+}
+
+// summarise turns a plugin's partial report into one line for the human mode,
+// falling back to a generic message when there is nothing to say.
+func summarise(stdout []byte) string {
+	var r struct {
+		Cases []struct {
+			ID     string `json:"id"`
+			Passed bool   `json:"passed"`
+		} `json:"cases"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(stdout, &r); err != nil {
+		return "not fixed yet"
+	}
+	if r.Message != "" {
+		return r.Message
+	}
+	var failed int
+	for _, c := range r.Cases {
+		if !c.Passed {
+			failed++
+		}
+	}
+	if failed > 0 {
+		return fmt.Sprintf("not fixed yet (%d of %d still broken)", failed, len(r.Cases))
+	}
+	return "not fixed yet"
 }
 
 func truncate(b []byte) string {

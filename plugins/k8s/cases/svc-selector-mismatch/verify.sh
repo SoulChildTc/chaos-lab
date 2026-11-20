@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # verify: exit 0 only when the Service actually selects the running pods.
 set -uo pipefail
-ns="${K8S_NAMESPACE:?}"
+ns="${K8S_NS:-${K8S_NAMESPACE:?}}"
 
 kubectl get svc frontend -n "$ns" >/dev/null 2>&1 || { echo "k8s: 找不到 Service frontend" >&2; exit 2; }
 

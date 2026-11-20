@@ -13,10 +13,10 @@ import (
 // a pass from a broken command.
 func TestCheckHumanOutputShowsPassAndRootCause(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", nil, true)
+	cli.RunStart(context.Background(), rt, "fake", nil, true)
 
 	out, err := captureStdout(t, func() (int, error) {
-		return cli.RunCheck(context.Background(), rt, "fake/env", false, false)
+		return cli.RunCheck(context.Background(), rt, "fake", false, false)
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -36,10 +36,10 @@ func TestCheckHumanOutputShowsPassAndRootCause(t *testing.T) {
 // A not-yet-fixed check must still say something in human mode.
 func TestCheckHumanOutputSaysNotFixed(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", map[string]string{"broken": "true"}, true)
+	cli.RunStart(context.Background(), rt, "fake", map[string]string{"broken": "true"}, true)
 
 	out, _ := captureStdout(t, func() (int, error) {
-		return cli.RunCheck(context.Background(), rt, "fake/env", false, false)
+		return cli.RunCheck(context.Background(), rt, "fake", false, false)
 	})
 	if s := string(out); !strings.Contains(s, "not fixed") {
 		t.Fatalf("must say it is not fixed yet, got %q", s)
@@ -49,11 +49,11 @@ func TestCheckHumanOutputSaysNotFixed(t *testing.T) {
 // A check that itself failed must say why, in human mode.
 func TestCheckHumanOutputShowsPluginError(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", nil, true)
+	cli.RunStart(context.Background(), rt, "fake", nil, true)
 	overwritePlugin(t, rt, "fake", "#!/bin/sh\ncase \"$1\" in check) echo 'cluster unreachable' >&2; exit 2;; esac\nexit 1\n")
 
 	out, err := captureStdout(t, func() (int, error) {
-		return cli.RunCheck(context.Background(), rt, "fake/env", false, false)
+		return cli.RunCheck(context.Background(), rt, "fake", false, false)
 	})
 	if err == nil {
 		t.Fatal("want an error")

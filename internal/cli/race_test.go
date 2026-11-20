@@ -19,7 +19,7 @@ func TestConcurrentStartsCannotBothClaimSamePort(t *testing.T) {
 	var wg sync.WaitGroup
 	start := make(chan struct{})
 	codes := make([]int, 2)
-	refs := []string{"fake/env", "fake/other"}
+	refs := []string{"fake", "fake"}
 	for i := range refs {
 		wg.Add(1)
 		go func(i int) {

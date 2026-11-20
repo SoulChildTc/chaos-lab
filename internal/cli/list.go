@@ -4,24 +4,21 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/soulchildtc/chaos-lab/internal/plugin"
 )
 
-// ListEntry is one row of `list`: a case, addressed as plugin/case.
+// ListEntry is one row of `list`: a fault a plugin can inject.
 type ListEntry struct {
-	Plugin string `json:"plugin"`
-	Case   string `json:"case"`
-	Title  string `json:"title"`
+	Plugin   string `json:"plugin"`
+	Scenario string `json:"scenario"`
+	Title    string `json:"title"`
 }
 
-// RunList prints the cases of installed plugins. An empty filter means every
-// plugin; a filter naming an unknown or broken plugin is an error, not an empty
-// table. A plugin that fails to answer is reported on stderr and skipped, so one
-// broken plugin does not hide the rest.
+// RunList prints every scenario every installed plugin provides. A filter limits
+// it to one plugin. An unknown filter is an error, not an empty table.
 func RunList(ctx context.Context, rt *Runtime, filter string, asJSON bool) (int, error) {
-	names, err := plugin.Discover(rt.PluginsDir)
+	names, err := pluginDiscover(rt)
 	if err != nil {
 		return ExitUserError, err
 	}
@@ -34,20 +31,20 @@ func RunList(ctx context.Context, rt *Runtime, filter string, asJSON bool) (int,
 			}
 		}
 		if !found {
-			return ExitUserError, fmt.Errorf("%w: plugin %s is not installed", plugin.ErrUserInput, filter)
+			return ExitUserError, fmt.Errorf("plugin %s is not installed", filter)
 		}
 		names = []string{filter}
 	}
 
 	entries := make([]ListEntry, 0, len(names))
 	for _, name := range names {
-		cases, err := rt.Lister(name).List(ctx, "", nil)
+		catalog, err := rt.Lister(name).List(ctx, "", nil)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "skipping plugin %s: %v\n", name, err)
 			continue
 		}
-		for _, c := range cases {
-			entries = append(entries, ListEntry{Plugin: name, Case: c.ID, Title: c.Title})
+		for _, sc := range catalog.Scenarios {
+			entries = append(entries, ListEntry{Plugin: name, Scenario: sc.ID, Title: sc.Title})
 		}
 	}
 
@@ -58,18 +55,29 @@ func RunList(ctx context.Context, rt *Runtime, filter string, asJSON bool) (int,
 		fmt.Println("No scenarios yet. Install a plugin first: chaoslab plugin install <dir>")
 		return ExitOK, nil
 	}
-	rows := make([][]string, 0, len(entries))
+
 	nameWidth := 0
 	for _, e := range entries {
-		name := e.Plugin + "/" + e.Case
-		if w := displayWidth(name); w > nameWidth {
+		if w := displayWidth(e.Plugin); w > nameWidth {
 			nameWidth = w
 		}
-		rows = append(rows, []string{name, e.Title})
 	}
-	fmt.Println(head("SCENARIO" + strings.Repeat(" ", nameWidth-displayWidth("SCENARIO")+2) + "DESCRIPTION"))
-	for _, r := range rows {
-		fmt.Println(r[0] + strings.Repeat(" ", nameWidth-displayWidth(r[0])+2) + r[1])
+	scWidth := 0
+	for _, e := range entries {
+		if w := displayWidth(e.Scenario); w > scWidth {
+			scWidth = w
+		}
 	}
+
+	fmt.Println(head(pad("PLUGIN", nameWidth+2) + pad("SCENARIO", scWidth+2) + "FAULT"))
+	for _, e := range entries {
+		fmt.Println(pad(e.Plugin, nameWidth+2) + pad(e.Scenario, scWidth+2) + e.Title)
+	}
+	fmt.Println()
+	fmt.Println(dim("These are the faults a plugin can inject. chaoslab start <plugin> injects all of them."))
 	return ExitOK, nil
+}
+
+func pluginDiscover(rt *Runtime) ([]string, error) {
+	return plugin.Discover(rt.PluginsDir)
 }

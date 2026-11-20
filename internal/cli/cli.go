@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -66,9 +67,10 @@ func jsonFlag(cmd *cobra.Command) bool {
 func newListCmd(rt *Runtime) *cobra.Command {
 	return &cobra.Command{
 		Use:   "list [plugin]",
-		Short: "List scenarios",
-		Long:  "List scenarios from every installed plugin. Give a plugin name to list only that plugin's.",
-		Args:  cobra.MaximumNArgs(1),
+		Short: "List the faults each plugin can inject",
+		Long: `List the faults each installed plugin can inject. A plugin injects all of them
+at once, so this is a catalogue of what a plugin covers, not a menu to pick from.`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			filter := ""
 			if len(args) == 1 {
@@ -82,9 +84,9 @@ func newListCmd(rt *Runtime) *cobra.Command {
 func newCheckCmd(rt *Runtime) *cobra.Command {
 	var watch bool
 	cmd := &cobra.Command{
-		Use:   "check <plugin>/<case>[#n]",
+		Use:   "check [plugin[#n]]",
 		Short: "Decide whether the fault is fixed",
-		Long: `Decide whether the scenario has been fixed. Exit code 0 means fixed, 2 means
+		Long: `Decide whether the instance has been fixed. Exit code 0 means fixed, 2 means
 not yet, 3 means the check itself failed.
 
 A single check returns immediately; --watch retries every 3 seconds until it
@@ -101,7 +103,7 @@ passes or the scenario's check_timeout is exceeded.`,
 func newStopCmd(rt *Runtime, use, short string) *cobra.Command {
 	var all bool
 	cmd := &cobra.Command{
-		Use:   use + " (<plugin>/<case>[#n] | --all)",
+		Use:   use + " [plugin[#n] | --all]",
 		Short: short,
 		Long: `Have the plugin destroy the environment, then measure for yourself whether the
 resources it claimed are really gone. Anything left behind is marked dirty and
@@ -134,7 +136,7 @@ func newStopAliasCmd(rt *Runtime) *cobra.Command {
 
 func newStatusCmd(rt *Runtime) *cobra.Command {
 	return &cobra.Command{
-		Use:   "status [<plugin>/<case>[#n]]",
+		Use:   "status [plugin[#n]]",
 		Short: "Show live instances",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -208,13 +210,13 @@ func newPluginCmd(rt *Runtime) *cobra.Command {
 // answered with the plugin's real parameter table.
 func newStartCmd(rt *Runtime) *cobra.Command {
 	return &cobra.Command{
-		Use:   "start <plugin>/<case> [--arg=value ...]",
+		Use:   "start <plugin> [--arg=value ...]",
 		Short: "Bring an environment up and show only the symptom",
-		Long: `Bring up one scenario and inject its fault. The output stops at the symptom and
-does not tell you the cause.
+		Long: `Bring a plugin's environment up and inject every fault it supports. The output
+gives you the symptom and how to connect, never which faults were injected.
 
-Each scenario declares its own flags; add the scenario name to see them:
-  chaoslab start k8s/pod-pending --help`,
+Flags are declared by the plugin; --help shows them together with the faults
+this plugin covers:`,
 		DisableFlagParsing: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return failWith(runStartArgs(cmd, rt, args))
@@ -256,7 +258,7 @@ func runStartArgs(cmd *cobra.Command, rt *Runtime, args []string) (int, error) {
 			cmd.Help()
 			return ExitOK, nil
 		}
-		return ExitUserError, fmt.Errorf("a scenario is required: chaoslab start <plugin>/<case>")
+		return ExitUserError, errors.New("a plugin is required: chaoslab start <plugin>")
 	}
 	if wantHelp {
 		return printStartHelp(cmd.Context(), rt, ref)

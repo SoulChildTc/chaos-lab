@@ -27,6 +27,6 @@ func pluginCall(ctx context.Context, pluginDir string, inst state.Instance, acti
 	}
 	argsFile.Close()
 
-	return plugin.Run(ctx, pluginDir, pluginEnv(inst.Plugin, pluginDir, inst.Slug, inst.Case), pluginDir+"/plugin",
-		action, inst.Case, "--instance="+inst.Slug, "--args=@"+argsFile.Name())
+	return plugin.Run(ctx, pluginDir, pluginEnv(inst.Plugin, pluginDir, inst.Slug), pluginDir+"/plugin",
+		action, "--instance="+inst.Slug, "--args=@"+argsFile.Name())
 }

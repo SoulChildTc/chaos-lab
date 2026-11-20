@@ -67,10 +67,10 @@ func TestEveryCommandHasHelp(t *testing.T) {
 // The alias still works even though it is hidden from the listing.
 func TestHiddenAliasStillRuns(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	if code, err := cli.RunStart(context.Background(), rt, "fake/env", nil, true); code != 0 {
+	if code, err := cli.RunStart(context.Background(), rt, "fake", nil, true); code != 0 {
 		t.Fatalf("start: %d %v", code, err)
 	}
-	if code, err := cli.Run(context.Background(), rt, []string{"rm", "fake/env"}); code != 0 || err != nil {
+	if code, err := cli.Run(context.Background(), rt, []string{"rm", "fake"}); code != 0 || err != nil {
 		t.Fatalf("rm: code=%d err=%v", code, err)
 	}
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # inject: deploy, then prove the PVC is stuck Pending for lack of a provisioner.
 set -uo pipefail
-ns="${K8S_NAMESPACE:?}"
+ns="${K8S_NS:-${K8S_NAMESPACE:?}}"
 dir="${K8S_CASE_DIR:?}"
 
 sed "s/PLACEHOLDER/$ns/g" "$dir/manifests.yaml" | kubectl apply -n "$ns" -f - >&2 || exit 1

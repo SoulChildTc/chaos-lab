@@ -12,14 +12,15 @@ import (
 
 func TestStatusJSONListsOnlyLive(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	if code, _ := cli.RunStart(context.Background(), rt, "fake/env", nil, true); code != 0 {
-		t.Fatal("start env")
+	installSecondPlugin(t, rt)
+	if code, _ := cli.RunStart(context.Background(), rt, "fake", nil, true); code != 0 {
+		t.Fatal("start fake")
 	}
-	if code, _ := cli.RunStart(context.Background(), rt, "fake/other", nil, true); code != 0 {
-		t.Fatal("start other")
+	if code, _ := cli.RunStart(context.Background(), rt, "fake2", nil, true); code != 0 {
+		t.Fatal("start fake2")
 	}
-	if code, _ := cli.RunStop(context.Background(), rt, "fake/env", false); code != 0 {
-		t.Fatal("stop env")
+	if code, _ := cli.RunStop(context.Background(), rt, "fake", false); code != 0 {
+		t.Fatal("stop fake")
 	}
 
 	out, err := captureStdout(t, func() (int, error) { return cli.RunStatus(context.Background(), rt, "", true) })
@@ -30,15 +31,15 @@ func TestStatusJSONListsOnlyLive(t *testing.T) {
 	if err := json.Unmarshal(out, &got); err != nil {
 		t.Fatalf("stdout not JSON: %q (%v)", out, err)
 	}
-	if len(got) != 1 || got[0].Case != "other" {
+	if len(got) != 1 || got[0].Plugin != "fake2" {
 		t.Fatalf("%+v", got)
 	}
 }
 
 func TestStatusJSONIncludesDirty(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", map[string]string{"fail-down": "true"}, true)
-	cli.RunStop(context.Background(), rt, "fake/env", false)
+	cli.RunStart(context.Background(), rt, "fake", map[string]string{"fail-down": "true"}, true)
+	cli.RunStop(context.Background(), rt, "fake", false)
 
 	out, _ := captureStdout(t, func() (int, error) { return cli.RunStatus(context.Background(), rt, "", true) })
 	var got []state.Instance
@@ -61,15 +62,15 @@ func TestStatusJSONEmptyIsArray(t *testing.T) {
 
 func TestStatusFilterByInstanceID(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", nil, true)
-	cli.RunStart(context.Background(), rt, "fake/other", nil, true)
+	cli.RunStart(context.Background(), rt, "fake", nil, true)
+	cli.RunStart(context.Background(), rt, "fake", nil, true)
 
 	out, _ := captureStdout(t, func() (int, error) {
-		return cli.RunStatus(context.Background(), rt, "fake/other#1", true)
+		return cli.RunStatus(context.Background(), rt, "fake#1", true)
 	})
 	var got []state.Instance
 	json.Unmarshal(out, &got)
-	if len(got) != 1 || got[0].ID != "fake/other#1" {
+	if len(got) != 1 || got[0].ID != "fake#1" {
 		t.Fatalf("%+v", got)
 	}
 }
@@ -84,12 +85,12 @@ func TestStatusUnknownRefIsUserError(t *testing.T) {
 
 func TestStatusHumanOutputMentionsIDs(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", nil, true)
+	cli.RunStart(context.Background(), rt, "fake", nil, true)
 	out, err := captureStdout(t, func() (int, error) { return cli.RunStatus(context.Background(), rt, "", false) })
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(out), "fake/env#1") || !strings.Contains(string(out), "running") {
+	if !strings.Contains(string(out), "fake#1") || !strings.Contains(string(out), "running") {
 		t.Fatalf("human output=%q", out)
 	}
 }

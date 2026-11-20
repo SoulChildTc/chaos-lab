@@ -14,7 +14,7 @@ func TestStartRecoversOrphanedStartingRecord(t *testing.T) {
 	dead := 999999
 	if err := rt.Store.Update(context.Background(), func(f *state.File) error {
 		f.Instances = append(f.Instances, state.Instance{
-			ID: "fake/env#9", Plugin: "fake", Case: "env", Slug: "fake-env-9",
+			ID: "fake/env#9", Plugin: "fake", Slug: "fake-9",
 			Phase: state.PhaseStarting, Live: true, PID: dead,
 			Claims: []string{"dir:/tmp/whatever"},
 		})
@@ -37,15 +37,15 @@ func TestStartIsBlockedByOrphanOfSameCase(t *testing.T) {
 	rt, _ := newTestRuntime(t)
 	if err := rt.Store.Update(context.Background(), func(f *state.File) error {
 		f.Instances = append(f.Instances, state.Instance{
-			ID: "fake/env#9", Plugin: "fake", Case: "env", Slug: "fake-env-9",
+			ID: "fake/env#9", Plugin: "fake", Slug: "fake-9",
 			Phase: state.PhaseStarting, Live: true, PID: 999999,
 		})
-		f.Seq["fake/env"] = 9
+		f.Seq["fake"] = 9
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
-	code, err := cli.RunStart(context.Background(), rt, "fake/env", nil, true)
+	code, err := cli.RunStart(context.Background(), rt, "fake", nil, true)
 	if code != 1 || err == nil {
 		t.Fatalf("code=%d err=%v", code, err)
 	}

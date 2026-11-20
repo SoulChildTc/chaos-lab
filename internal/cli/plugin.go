@@ -63,11 +63,11 @@ func RunPlugin(ctx context.Context, rt *Runtime, sub string, rest []string, asJS
 				fmt.Println(a.HelpLine())
 			}
 		}
-		cases, err := lister.List(ctx, "", nil)
-		if err == nil && len(cases) > 0 {
-			fmt.Println("\nScenarios:")
-			for _, c := range cases {
-				fmt.Printf("  %s/%s  %s\n", schema.Name, c.ID, c.Title)
+		catalog, err := lister.List(ctx, "", nil)
+		if err == nil && len(catalog.Scenarios) > 0 {
+			fmt.Println("\nFaults this plugin injects:")
+			for _, sc := range catalog.Scenarios {
+				fmt.Printf("  %s  %s\n", pad(sc.ID, 24), sc.Title)
 			}
 		}
 		return ExitOK, nil

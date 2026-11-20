@@ -21,27 +21,32 @@ chaos-lab 把故障现场做成一次性的：一条命令起好环境，只告�
 支持哪些技术栈取决于装了哪些插件，框架本身不关心。下面以自带的 `k8s` 插件为例：
 
 ```console
-$ chaoslab start k8s/ingress-502
-k8s: 创建集群 lab-k8s-ingress-502-1（镜像 kindest/node:v1.31.0）
+$ chaoslab start k8s
+k8s: 创建集群 lab-k8s-1（镜像 kindest/node:v1.31.0）
 k8s: 集群就绪（30s）
-k8s: 故障已就绪
-现象：访问站点返回 502
-k8s/ingress-502#1 已就绪（slug k8s-ingress-502-1）
-修好后运行：chaoslab check k8s/ingress-502#1
+k8s: 5 处故障已注入
+✓ ready k8s#1
 
-$ # 自己进环境查，改对之后
+SYMPTOM
+  一个刚部署的站点访问返回 502；同时有些 Pod 起不来、有些 PVC 挂不上。
 
-$ chaoslab check k8s/ingress-502
-✓ k8s/ingress-502#1 通过
+CONNECT
+  export KUBECONFIG=~/.lab/k8s-state/k8s-1.kubeconfig
+  namespace 前缀: lab-k8s-1-<故障名>
 
-根因
-  Service web 的 targetPort 是 8080，而容器实际监听 80。Service 有 endpoints，
-  但流量打到没有监听的端口，网关侧表现为 502。
+$ # 自己进集群查，改对之后
 
-关键线索
-  - kubectl get endpoints web 显示有地址，容易误判为正常
-  - kubectl exec 进 gateway 访问 web 会 connection refused
-  - kubectl describe svc web 里 targetPort=8080 与容器 ports 不一致
+$ chaoslab check k8s
+✓ fixed k8s#1
+
+ROOT CAUSE
+  Service targetPort 指向了没有监听的端口；Pod 请求了节点放不下的 CPU；
+  镜像 tag 不存在；Service selector 与 Pod 标签不匹配；
+  PVC 引用了不存在的 StorageClass。
+
+CLUES
+  • 先按 Pod 状态分组：Pending / ImagePullBackOff 各自原因不同
+  • kubectl describe 的 Events 里通常直接写着原因
 ```
 
 ## 为什么用它
@@ -96,19 +101,27 @@ chaoslab list     # 这时才有东西可跑
 ## 快速开始
 
 ```bash
-chaoslab list                            # 有哪些场景
-chaoslab start <插件>/<场景>              # 起一个，只给现象
-chaoslab check <插件>/<场景> --watch      # 一边修一边轮询，每 3 秒，最长 20 分钟
-chaoslab rm <插件>/<场景>                 # 清理并实测残留
+chaoslab list                       # 插件能注入哪些故障
+chaoslab start k8s                  # 起环境，注入全部故障
+chaoslab check k8s --watch          # 一边修一边轮询，每 3 秒
+chaoslab rm k8s                     # 清理并实测残留
 ```
 
-`start` 之后环境在哪里、怎么连进去，由插件决定，它会告诉你。拿自带的 K8s 插件举例：
+`start` 会告诉你两件事：**遇到什么问题**，以及**怎么连进去**。拿自带的 K8s 插件举例：
 
-```bash
-chaoslab start k8s/pod-pending
-export KUBECONFIG=~/.lab/k8s-state/k8s-pod-pending-1.kubeconfig
-kubectl get pods -A
 ```
+$ chaoslab start k8s
+✓ ready k8s#1
+
+SYMPTOM
+  一个刚部署的站点访问返回 502；同时有些 Pod 起不来、有些 PVC 挂不上。
+
+CONNECT
+  export KUBECONFIG=~/.lab/k8s-state/k8s-1.kubeconfig
+  namespace 前缀: lab-k8s-1-<故障名>
+```
+
+拿到 kubeconfig 就能进去查了。修好之后再 `check`，通过时给出根因和线索。
 
 修好之后环境还在，可以进去复盘，`stop`（或 `rm`）才会删掉。
 
@@ -116,10 +129,10 @@ kubectl get pods -A
 
 | 命令 | 说明 |
 |---|---|
-| `chaoslab list [--json]` | 所有已装插件的场景 |
-| `chaoslab start <插件>/<场景> [--参数=值] [--help] [--json]` | 起环境，`--help` 看该插件的参数表 |
-| `chaoslab check <引用> [--watch] [--json]` | 判定是否修好，`--watch` 每 3 秒轮询 |
-| `chaoslab stop <引用> [--json]` | 清理并实测残留，别名 `rm` |
+| `chaoslab list [插件] [--json]` | 插件能注入哪些故障 |
+| `chaoslab start <插件> [--参数=值] [--help] [--json]` | 起环境并注入该插件的全部故障 |
+| `chaoslab check [<实例>] [--watch] [--json]` | 判定是否修好，`--watch` 每 3 秒轮询 |
+| `chaoslab stop [<实例>] [--json]` | 清理并实测残留，别名 `rm` |
 | `chaoslab stop --all` | 停掉全部，别名 `rm --all` |
 | `chaoslab status [<实例>] [--json]` | 活跃实例 |
 | `chaoslab plugin install <目录\|git-url>` | 装插件 |
@@ -128,7 +141,7 @@ kubectl get pods -A
 | `chaoslab plugin validate <目录>` | 写插件时自检，不执行 `up` |
 | `chaoslab version [--json]` | 版本与构建信息 |
 
-`<引用>` 可以写 `插件/场景`（该场景只有一个存活实例时），也可以写完整实例 ID `插件/场景#2`。
+插件一次注入它支持的全部故障，所以没有“只起一个故障”的写法。实例 ID 形如 `k8s#1`，日常可以省略，直接写插件名。
 
 状态和行为记录都在 `~/.lab/` 下，用 `CHAOSLAB_HOME` 可以整个挪走，测试和评测常用这个。
 
@@ -151,7 +164,7 @@ kubectl get pods -A
 
 | 插件 | 说明 | 文档 |
 |---|---|---|
-| `k8s` | 五个 Kubernetes 故障场景，每个实例一套一次性 kind 集群 | [plugins/k8s/README.md](plugins/k8s/README.md) |
+| `k8s` | 五个 Kubernetes 故障，全部注入一套一次性 kind 集群 | [plugins/k8s/README.md](plugins/k8s/README.md) |
 | `fake` | 零依赖测试替身，也是写插件的最小参考 | [plugins/fake/README.md](plugins/fake/README.md) |
 
 每个插件自带 README，讲它有哪些场景、各埋了什么坑、需要什么依赖、参数怎么用。
@@ -171,26 +184,30 @@ chaoslab plugin install ./myplugin
 起场景、把入口交给 Agent、由系统判定它修好没有。所有命令都有 `--json`：
 
 ```bash
-chaoslab start <插件>/<场景> --json    # {"instance":"...","slug":"...","phase":"running"}
+chaoslab start k8s --json    # {"instance":"k8s#1","symptom":"...","connect":["..."]}
 chaoslab status --json
-chaoslab check <插件>/<场景> --json    # {"passed":true,"report":{...}}
-chaoslab stop <插件>/<场景> --json     # {"released":true,"verdicts":[...]}
+chaoslab check k8s --json    # {"passed":false,"report":{"cases":[{"id":"pvc-unbound","passed":false}]}}
+chaoslab stop k8s --json     # {"released":true,"verdicts":[...]}
 ```
 
 每次运行在 `~/.lab/runs/` 留一条 JSON：
 
 ```json
 {
-  "instance": "k8s/ingress-502#1",
+  "instance": "k8s#1",
   "result": "passed",
   "duration_sec": 412,
   "checks": 9,
-  "report": { "passed": true, "root_cause": "...", "clues": ["..."] },
+  "report": {
+    "passed": true,
+    "cases": [{ "id": "pvc-unbound", "passed": true }],
+    "root_cause": "..."
+  },
   "claims_released": true
 }
 ```
 
-`result` 是 `passed` / `timeout` / `abandoned` / `dirty` / `start_failed` 之一，`duration_sec` 是从起到修好的耗时。成功率、平均修复时长由评测程序自己遍历这个目录算，框架不提供统计命令。
+`result` 是 `passed` / `timeout` / `abandoned` / `dirty` / `start_failed` 之一，`duration_sec` 是从起到修好的耗时。`report.cases` 是插件填的逐故障明细，按故障统计通过率就靠它。
 
 ## 实现
 

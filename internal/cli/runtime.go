@@ -1,5 +1,3 @@
-// Package cli implements every chaoslab subcommand. Each command returns an
-// exit code; the caller maps that to the process exit status.
 package cli
 
 import (
@@ -75,51 +73,67 @@ var pluginNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
 // Slug builds the identifier the plugin uses to name its resources. It must
 // satisfy common resource naming rules (lowercase alnum and hyphen).
-func Slug(pluginName, caseName string, seq int) string {
-	raw := fmt.Sprintf("%s-%s-%d", pluginName, caseName, seq)
+func Slug(pluginName string, seq int) string {
+	raw := fmt.Sprintf("%s-%d", pluginName, seq)
 	return strings.Trim(slugRe.ReplaceAllString(strings.ToLower(raw), "-"), "-")
 }
 
-// splitRef turns "plugin/case" into its parts.
-func splitRef(ref string) (pluginName, caseName string, err error) {
-	parts := strings.Split(ref, "/")
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", fmt.Errorf("%w: %q is not a <plugin>/<case> reference", plugin.ErrUserInput, ref)
+// parsePluginRef accepts "plugin" or "plugin#3". A scenario name is not a valid
+// reference: the plugin decides which faults it injects, so there is no
+// per-fault addressing on the command line.
+func parsePluginRef(ref string) (pluginName, instanceID string, err error) {
+	if i := strings.Index(ref, "#"); i >= 0 {
+		pluginName = ref[:i]
+		if !pluginNameRe.MatchString(pluginName) {
+			return "", "", fmt.Errorf("%w: %q is not a plugin instance", plugin.ErrUserInput, ref)
+		}
+		return pluginName, ref, nil
 	}
-	return parts[0], parts[1], nil
+	if strings.Contains(ref, "/") {
+		return "", "", fmt.Errorf("%w: %q addresses a scenario; a plugin injects all of its faults at once, so use %s",
+			plugin.ErrUserInput, ref, strings.SplitN(ref, "/", 2)[0])
+	}
+	if !pluginNameRe.MatchString(ref) {
+		return "", "", fmt.Errorf("%w: %q is not a plugin name", plugin.ErrUserInput, ref)
+	}
+	return ref, "", nil
 }
 
-// Resolve finds the instance a command refers to. ref may be a full instance ID
-// ("plugin/case#2") or a case reference ("plugin/case") when that case has
-// exactly one live instance.
+// Resolve finds the live instance a command refers to. ref is "plugin" (exactly
+// one live instance, or none) or the full instance id "plugin#3".
 func Resolve(instances []state.Instance, ref string) (*state.Instance, error) {
-	if i := strings.LastIndex(ref, "#"); i > 0 {
-		for n := range instances {
-			if instances[n].ID == ref {
-				return &instances[n], nil
-			}
-		}
-		return nil, fmt.Errorf("%w: no instance %q", plugin.ErrUserInput, ref)
+	pluginName, instanceID, err := parsePluginRef(ref)
+	if err != nil {
+		return nil, err
 	}
 
 	var matches []state.Instance
-	for _, in := range instances {
-		if in.Live && in.Plugin+"/"+in.Case == ref {
-			matches = append(matches, in)
+	for i := range instances {
+		in := &instances[i]
+		if !in.Live || in.Plugin != pluginName {
+			continue
 		}
+		if instanceID != "" && in.ID != instanceID {
+			continue
+		}
+		matches = append(matches, *in)
 	}
+
 	switch len(matches) {
 	case 1:
 		return &matches[0], nil
 	case 0:
-		return nil, fmt.Errorf("%w: %s is not running", plugin.ErrUserInput, ref)
+		if instanceID != "" {
+			return nil, fmt.Errorf("%w: no live instance %q", plugin.ErrUserInput, instanceID)
+		}
+		return nil, fmt.Errorf("%w: %s is not running", plugin.ErrUserInput, pluginName)
 	default:
 		ids := make([]string, len(matches))
 		for i, m := range matches {
 			ids[i] = m.ID
 		}
 		return nil, fmt.Errorf("%w: %s has several live instances (%s); use one of those IDs",
-			plugin.ErrUserInput, ref, strings.Join(ids, ", "))
+			plugin.ErrUserInput, pluginName, strings.Join(ids, ", "))
 	}
 }
 
@@ -144,11 +158,10 @@ func Converge(f *state.File) {
 	}
 }
 
-func pluginEnv(pluginName, pluginDir, instance, caseName string) []string {
+func pluginEnv(pluginName, pluginDir, instanceID string) []string {
 	return []string{
-		"LAB_INSTANCE=" + instance,
+		"LAB_INSTANCE=" + instanceID,
 		"LAB_PLUGIN_DIR=" + pluginDir,
-		"LAB_CASE=" + caseName,
 	}
 }
 

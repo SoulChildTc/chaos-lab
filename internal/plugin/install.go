@@ -122,16 +122,14 @@ func Validate(ctx context.Context, dir string) ([]string, error) {
 	if _, err := l.Schema(ctx); err != nil {
 		return nil, err
 	}
-	cases, err := l.List(ctx, "", nil)
+	catalog, err := l.List(ctx, "", nil)
 	if err != nil {
 		return nil, err
 	}
 	var warnings []string
-	for _, c := range cases {
-		for _, cl := range c.Claims {
-			if !hasKnownPrefix(cl) {
-				warnings = append(warnings, fmt.Sprintf("case %s: claim %q uses an unknown prefix; the framework will not verify it after stop", c.ID, cl))
-			}
+	for _, cl := range catalog.Claims {
+		if !hasKnownPrefix(cl) {
+			warnings = append(warnings, fmt.Sprintf("claim %q uses an unknown prefix; the framework will not verify it after stop", cl))
 		}
 	}
 	return warnings, nil

@@ -11,10 +11,10 @@ import (
 // `rm` is an alias for stop: same behaviour, shorter to type.
 func TestRmIsAliasForStop(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	if code, err := cli.RunStart(context.Background(), rt, "fake/env", nil, true); code != 0 {
+	if code, err := cli.RunStart(context.Background(), rt, "fake", nil, true); code != 0 {
 		t.Fatalf("start: %d %v", code, err)
 	}
-	code, err := cli.Run(context.Background(), rt, []string{"rm", "fake/env"})
+	code, err := cli.Run(context.Background(), rt, []string{"rm", "fake"})
 	if code != 0 || err != nil {
 		t.Fatalf("rm: code=%d err=%v", code, err)
 	}
@@ -26,10 +26,10 @@ func TestRmIsAliasForStop(t *testing.T) {
 
 func TestRmSupportsAllAndJSON(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", nil, true)
+	cli.RunStart(context.Background(), rt, "fake", nil, true)
 
 	out, err := captureStdout(t, func() (int, error) {
-		return cli.Run(context.Background(), rt, []string{"--json", "rm", "fake/env"})
+		return cli.Run(context.Background(), rt, []string{"--json", "rm", "fake"})
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -45,7 +45,7 @@ func TestRmSupportsAllAndJSON(t *testing.T) {
 		t.Fatalf("%+v", got)
 	}
 
-	cli.RunStart(context.Background(), rt, "fake/env", nil, true)
+	cli.RunStart(context.Background(), rt, "fake", nil, true)
 	if code, err := cli.Run(context.Background(), rt, []string{"rm", "--all"}); code != 0 || err != nil {
 		t.Fatalf("rm --all: code=%d err=%v", code, err)
 	}

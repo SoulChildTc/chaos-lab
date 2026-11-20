@@ -14,7 +14,7 @@ import (
 // would make "no residue" a guess. It must say so, in both modes.
 func TestStopUnverifiableClaimsAreNotReportedReleased(t *testing.T) {
 	rt, home := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", nil, true)
+	cli.RunStart(context.Background(), rt, "fake", nil, true)
 	if err := rt.Store.Update(context.Background(), func(f *state.File) error {
 		f.Instances[0].Claims = []string{"remote:jenkins"}
 		return nil
@@ -22,7 +22,7 @@ func TestStopUnverifiableClaimsAreNotReportedReleased(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, err := captureStdout(t, func() (int, error) {
-		return cli.RunStop(context.Background(), rt, "fake/env", true)
+		return cli.RunStop(context.Background(), rt, "fake", true)
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -50,9 +50,9 @@ func TestStopUnverifiableClaimsAreNotReportedReleased(t *testing.T) {
 // A plugin that failed to tear down must say why, even in JSON mode.
 func TestStopJSONCarriesTheFailureMessage(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", map[string]string{"fail-down": "true"}, true)
+	cli.RunStart(context.Background(), rt, "fake", map[string]string{"fail-down": "true"}, true)
 	out, _ := captureStdout(t, func() (int, error) {
-		return cli.RunStop(context.Background(), rt, "fake/env", true)
+		return cli.RunStop(context.Background(), rt, "fake", true)
 	})
 	if !strings.Contains(string(out), `"message"`) || !strings.Contains(string(out), "down") {
 		t.Fatalf("JSON stop must explain the failure: %s", out)
@@ -62,8 +62,8 @@ func TestStopJSONCarriesTheFailureMessage(t *testing.T) {
 // stop must not erase the outcome of a failed start or a watch timeout.
 func TestStopKeepsStartFailedResult(t *testing.T) {
 	rt, home := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", map[string]string{"fail-up": "true"}, true)
-	cli.RunStop(context.Background(), rt, "fake/env", false)
+	cli.RunStart(context.Background(), rt, "fake", map[string]string{"fail-up": "true"}, true)
+	cli.RunStop(context.Background(), rt, "fake", false)
 	recs := runRecords(t, home)
 	if len(recs) != 1 || recs[0].Result != runlog.ResultStartFailed {
 		t.Fatalf("start_failed must survive stop: %+v", recs)
@@ -72,9 +72,9 @@ func TestStopKeepsStartFailedResult(t *testing.T) {
 
 func TestStopKeepsTimeoutResult(t *testing.T) {
 	rt, home := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", map[string]string{"broken": "true", "check-timeout": "1s"}, true)
-	cli.RunCheck(context.Background(), rt, "fake/env", true, true)
-	cli.RunStop(context.Background(), rt, "fake/env", false)
+	cli.RunStart(context.Background(), rt, "fake", map[string]string{"broken": "true", "check-timeout": "1s"}, true)
+	cli.RunCheck(context.Background(), rt, "fake", true, true)
+	cli.RunStop(context.Background(), rt, "fake", false)
 	recs := runRecords(t, home)
 	if len(recs) != 1 || recs[0].Result != runlog.ResultTimeout {
 		t.Fatalf("timeout must survive stop: %+v", recs)
@@ -84,8 +84,8 @@ func TestStopKeepsTimeoutResult(t *testing.T) {
 // A watch timeout must record the attempts it actually made.
 func TestWatchTimeoutRecordsCheckCount(t *testing.T) {
 	rt, home := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", map[string]string{"broken": "true", "check-timeout": "1s"}, true)
-	cli.RunCheck(context.Background(), rt, "fake/env", true, true)
+	cli.RunStart(context.Background(), rt, "fake", map[string]string{"broken": "true", "check-timeout": "1s"}, true)
+	cli.RunCheck(context.Background(), rt, "fake", true, true)
 	recs := runRecords(t, home)
 	if len(recs) != 1 || recs[0].Checks < 1 {
 		t.Fatalf("checks must be recorded: %+v", recs)
@@ -97,7 +97,7 @@ func TestUninstallConvergesOrphanRecord(t *testing.T) {
 	rt, _ := newTestRuntime(t)
 	if err := rt.Store.Update(context.Background(), func(f *state.File) error {
 		f.Instances = append(f.Instances, state.Instance{
-			ID: "fake/env#9", Plugin: "fake", Case: "env", Slug: "fake-env-9",
+			ID: "fake/env#9", Plugin: "fake", Slug: "fake-9",
 			Phase: state.PhaseStarting, Live: true, PID: 999999,
 		})
 		return nil

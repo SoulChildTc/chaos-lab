@@ -1,7 +1,6 @@
 // Package state owns the one file that records instances. Every read and write
 // goes through a file lock, and every write is atomic, because the CLI may run
-// concurrently (two starts in two terminals) and a half-written file would
-// orphan real environments.
+// concurrently and a half-written file would orphan real environments.
 package state
 
 import (
@@ -26,10 +25,11 @@ const (
 	PhaseDirty    Phase = "dirty"
 )
 
+// Instance is one running plugin environment. Its scope is the whole plugin:
+// a plugin decides which faults it injects and how they share an environment.
 type Instance struct {
 	ID        string         `json:"id"`
 	Plugin    string         `json:"plugin"`
-	Case      string         `json:"case"`
 	Slug      string         `json:"slug"`
 	Args      map[string]any `json:"args,omitempty"`
 	Claims    []string       `json:"claims,omitempty"`

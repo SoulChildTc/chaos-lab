@@ -14,10 +14,10 @@ import (
 
 func TestStopReleasesAndMarksNotLive(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	if code, err := cli.RunStart(context.Background(), rt, "fake/env", nil, true); code != 0 {
+	if code, err := cli.RunStart(context.Background(), rt, "fake", nil, true); code != 0 {
 		t.Fatalf("start: %d %v", code, err)
 	}
-	code, err := cli.RunStop(context.Background(), rt, "fake/env", true)
+	code, err := cli.RunStop(context.Background(), rt, "fake", true)
 	if err != nil || code != 0 {
 		t.Fatalf("code=%d err=%v", code, err)
 	}
@@ -30,8 +30,8 @@ func TestStopReleasesAndMarksNotLive(t *testing.T) {
 
 func TestStopWithFailDownMarksDirty(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", map[string]string{"fail-down": "true"}, true)
-	code, _ := cli.RunStop(context.Background(), rt, "fake/env", true)
+	cli.RunStart(context.Background(), rt, "fake", map[string]string{"fail-down": "true"}, true)
+	code, _ := cli.RunStop(context.Background(), rt, "fake", true)
 	if code != 3 {
 		t.Fatalf("want 3, got %d", code)
 	}
@@ -44,8 +44,8 @@ func TestStopWithFailDownMarksDirty(t *testing.T) {
 
 func TestStopWithResidualClaimsMarksDirty(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", map[string]string{"leak-dir": "true"}, true)
-	code, _ := cli.RunStop(context.Background(), rt, "fake/env", true)
+	cli.RunStart(context.Background(), rt, "fake", map[string]string{"leak-dir": "true"}, true)
+	code, _ := cli.RunStop(context.Background(), rt, "fake", true)
 	if code != 3 {
 		t.Fatalf("a residual must be a plugin-level failure, got %d", code)
 	}
@@ -58,8 +58,8 @@ func TestStopWithResidualClaimsMarksDirty(t *testing.T) {
 
 func TestStopReportsWhichClaimLeaked(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", map[string]string{"leak-dir": "true"}, true)
-	_, err := cli.RunStop(context.Background(), rt, "fake/env", false)
+	cli.RunStart(context.Background(), rt, "fake", map[string]string{"leak-dir": "true"}, true)
+	_, err := cli.RunStop(context.Background(), rt, "fake", false)
 	if err == nil || !strings.Contains(err.Error(), "dir:") {
 		t.Fatalf("error must name the leaked claim, got %v", err)
 	}
@@ -67,14 +67,14 @@ func TestStopReportsWhichClaimLeaked(t *testing.T) {
 
 func TestStopUncheckedClaimIsReportedNotFatal(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", nil, true)
+	cli.RunStart(context.Background(), rt, "fake", nil, true)
 	// A claim the framework cannot verify must not block the stop, but must be
 	// surfaced, otherwise "clean" is a guess.
 	rt.Store.Update(context.Background(), func(f *state.File) error {
 		f.Instances[0].Claims = []string{"remote:jenkins"}
 		return nil
 	})
-	code, err := cli.RunStop(context.Background(), rt, "fake/env", true)
+	code, err := cli.RunStop(context.Background(), rt, "fake", true)
 	if err != nil || code != 0 {
 		t.Fatalf("code=%d err=%v", code, err)
 	}
@@ -86,24 +86,24 @@ func TestStopUncheckedClaimIsReportedNotFatal(t *testing.T) {
 
 func TestStopThenStartSameCaseSucceeds(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", nil, true)
-	cli.RunStop(context.Background(), rt, "fake/env", true)
-	code, err := cli.RunStart(context.Background(), rt, "fake/env", nil, true)
+	cli.RunStart(context.Background(), rt, "fake", nil, true)
+	cli.RunStop(context.Background(), rt, "fake", true)
+	code, err := cli.RunStart(context.Background(), rt, "fake", nil, true)
 	if code != 0 || err != nil {
 		t.Fatalf("code=%d err=%v", code, err)
 	}
 	f, _ := rt.Store.Read(context.Background())
 	last := f.Instances[len(f.Instances)-1]
-	if last.ID != "fake/env#2" {
+	if last.ID != "fake#2" {
 		t.Fatalf("seq must not be reused: %+v", last)
 	}
-	cli.RunStop(context.Background(), rt, "fake/env", true)
+	cli.RunStop(context.Background(), rt, "fake", true)
 }
 
 func TestStopWritesAbandonedRecordWhenNeverPassed(t *testing.T) {
 	rt, home := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", nil, true)
-	cli.RunStop(context.Background(), rt, "fake/env", true)
+	cli.RunStart(context.Background(), rt, "fake", nil, true)
+	cli.RunStop(context.Background(), rt, "fake", true)
 	recs := runRecords(t, home)
 	if len(recs) != 1 {
 		t.Fatalf("%+v", recs)
@@ -115,9 +115,9 @@ func TestStopWritesAbandonedRecordWhenNeverPassed(t *testing.T) {
 
 func TestStopAfterPassKeepsPassedResult(t *testing.T) {
 	rt, home := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", nil, true)
-	cli.RunCheck(context.Background(), rt, "fake/env", false, true)
-	cli.RunStop(context.Background(), rt, "fake/env", true)
+	cli.RunStart(context.Background(), rt, "fake", nil, true)
+	cli.RunCheck(context.Background(), rt, "fake", false, true)
+	cli.RunStop(context.Background(), rt, "fake", true)
 	recs := runRecords(t, home)
 	if len(recs) != 1 {
 		t.Fatalf("stop must update the pass record, not add one: %+v", recs)
@@ -132,8 +132,8 @@ func TestStopAfterPassKeepsPassedResult(t *testing.T) {
 
 func TestStopDirtyRunRecordSurvives(t *testing.T) {
 	rt, home := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", map[string]string{"fail-down": "true"}, true)
-	cli.RunStop(context.Background(), rt, "fake/env", true)
+	cli.RunStart(context.Background(), rt, "fake", map[string]string{"fail-down": "true"}, true)
+	cli.RunStop(context.Background(), rt, "fake", true)
 	recs := runRecords(t, home)
 	if len(recs) != 1 || recs[0].Result != runlog.ResultDirty {
 		t.Fatalf("%+v", recs)
@@ -145,23 +145,23 @@ func TestStopDirtyRunRecordSurvives(t *testing.T) {
 
 func TestStopDirtyBlocksRestart(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", map[string]string{"fail-down": "true"}, true)
-	cli.RunStop(context.Background(), rt, "fake/env", true)
-	code, err := cli.RunStart(context.Background(), rt, "fake/env", nil, true)
-	if code != 1 || err == nil || !strings.Contains(err.Error(), "fake/env#1") {
+	cli.RunStart(context.Background(), rt, "fake", map[string]string{"fail-down": "true"}, true)
+	cli.RunStop(context.Background(), rt, "fake", true)
+	code, err := cli.RunStart(context.Background(), rt, "fake", nil, true)
+	if code != 1 || err == nil || !strings.Contains(err.Error(), "fake#1") {
 		t.Fatalf("code=%d err=%v", code, err)
 	}
 }
 
 func TestStopRetryAfterDirtyCanSucceed(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", map[string]string{"fail-down": "true"}, true)
-	cli.RunStop(context.Background(), rt, "fake/env", true)
+	cli.RunStart(context.Background(), rt, "fake", map[string]string{"fail-down": "true"}, true)
+	cli.RunStop(context.Background(), rt, "fake", true)
 
 	// The user fixes the cause (here: the plugin stops failing and actually
 	// removes the leftover directory) and retries.
 	overwritePlugin(t, rt, "fake", "#!/bin/sh\nrm -rf \"$CHAOSLAB_HOME\"/fake-state/*\nexit 0\n")
-	code, err := cli.RunStop(context.Background(), rt, "fake/env", true)
+	code, err := cli.RunStop(context.Background(), rt, "fake", true)
 	if code != 0 || err != nil {
 		t.Fatalf("code=%d err=%v", code, err)
 	}
@@ -173,9 +173,9 @@ func TestStopRetryAfterDirtyCanSucceed(t *testing.T) {
 
 func TestStopJSONNamesReleasedClaims(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", nil, true)
+	cli.RunStart(context.Background(), rt, "fake", nil, true)
 	out, err := captureStdout(t, func() (int, error) {
-		return cli.RunStop(context.Background(), rt, "fake/env", true)
+		return cli.RunStop(context.Background(), rt, "fake", true)
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -188,33 +188,34 @@ func TestStopJSONNamesReleasedClaims(t *testing.T) {
 
 func TestStopAmbiguousRefRequiresInstanceID(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	if code, _ := cli.RunStart(context.Background(), rt, "fake/env", nil, true); code != 0 {
+	if code, _ := cli.RunStart(context.Background(), rt, "fake", nil, true); code != 0 {
 		t.Fatal("start")
 	}
-	// Forge a second live instance of the same case to exercise the ambiguity.
+	// Forge a second live instance of the same plugin. This cannot happen through
+	// start (claims and the live-instance check prevent it), but the resolver must
+	// refuse to guess if it ever does.
 	if err := rt.Store.Update(context.Background(), func(f *state.File) error {
 		dup := f.Instances[0]
-		dup.ID = "fake/env#2"
-		dup.Slug = "fake-env-2"
-		// Its own claim: a real second instance would own a different directory.
-		dup.Claims = []string{"dir:" + filepath.Join(rt.Home, "fake-state", "fake-env-2")}
+		dup.ID = "fake#2"
+		dup.Slug = "fake-2"
+		dup.Claims = []string{"port:18999"}
 		f.Instances = append(f.Instances, dup)
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
-	code, err := cli.RunStop(context.Background(), rt, "fake/env", true)
-	if code != 1 || err == nil || !strings.Contains(err.Error(), "fake/env#1") || !strings.Contains(err.Error(), "fake/env#2") {
+	code, err := cli.RunStop(context.Background(), rt, "fake", true)
+	if code != 1 || err == nil || !strings.Contains(err.Error(), "fake#1") || !strings.Contains(err.Error(), "fake#2") {
 		t.Fatalf("code=%d err=%v", code, err)
 	}
-	if code2, err2 := cli.RunStop(context.Background(), rt, "fake/env#2", true); code2 != 0 || err2 != nil {
+	if code2, err2 := cli.RunStop(context.Background(), rt, "fake#2", true); code2 != 0 || err2 != nil {
 		t.Fatalf("explicit id must work: %d %v", code2, err2)
 	}
 }
 
 func TestStopUnknownRefIsUserError(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	code, err := cli.RunStop(context.Background(), rt, "fake/env", true)
+	code, err := cli.RunStop(context.Background(), rt, "fake", true)
 	if code != 1 || err == nil {
 		t.Fatalf("code=%d err=%v", code, err)
 	}
@@ -222,9 +223,10 @@ func TestStopUnknownRefIsUserError(t *testing.T) {
 
 func TestStopLeavesOtherInstancesAlone(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", nil, true)
-	cli.RunStart(context.Background(), rt, "fake/other", nil, true)
-	if code, _ := cli.RunStop(context.Background(), rt, "fake/env", true); code != 0 {
+	installSecondPlugin(t, rt)
+	cli.RunStart(context.Background(), rt, "fake", nil, true)
+	cli.RunStart(context.Background(), rt, "fake2", nil, true)
+	if code, _ := cli.RunStop(context.Background(), rt, "fake", true); code != 0 {
 		t.Fatal("stop failed")
 	}
 	f, _ := rt.Store.Read(context.Background())

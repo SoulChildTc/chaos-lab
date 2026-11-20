@@ -56,8 +56,7 @@ cluster_up() {
       echo "k8s: 无法连接 --kubeconfig 指定的集群" >&2
       return 1
     fi
-    kubectl create namespace "$K8S_NAMESPACE" >/dev/null 2>&1 || true
-    echo "k8s: 复用外部集群，namespace $K8S_NAMESPACE" >&2
+    echo "k8s: 复用外部集群" >&2
     return 0
   fi
 
@@ -84,16 +83,17 @@ cluster_up() {
 
   export KUBECONFIG
   KUBECONFIG="$(kubeconfig_path)"
-  kubectl create namespace "$K8S_NAMESPACE" >/dev/null 2>&1 || true
   kubectl wait --for=condition=Ready nodes --all --timeout=120s >&2 || return 1
 }
 
 cluster_down() {
   if have_external; then
     export KUBECONFIG="$KUBECONFIG_EXTERNAL"
-    # Only ever touches this instance's namespace. A reused cluster is not ours.
-    kubectl delete namespace "$K8S_NAMESPACE" --ignore-not-found --timeout=120s >&2
-    return $?
+    # Only ever touches this instance's namespaces. A reused cluster is not ours.
+    for ns in $(kubectl get namespaces -o name 2>/dev/null | grep "^namespace/${K8S_NAMESPACE}-"); do
+      kubectl delete "$ns" --ignore-not-found --timeout=120s >&2
+    done
+    return 0
   fi
 
   local name

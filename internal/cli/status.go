@@ -21,7 +21,7 @@ func RunStatus(ctx context.Context, rt *Runtime, ref string, asJSON bool) (int, 
 			if !in.Live {
 				continue
 			}
-			if ref != "" && in.ID != ref && in.Plugin+"/"+in.Case != ref && in.Plugin != ref {
+			if ref != "" && in.ID != ref && in.Plugin != ref {
 				continue
 			}
 			out = append(out, in)

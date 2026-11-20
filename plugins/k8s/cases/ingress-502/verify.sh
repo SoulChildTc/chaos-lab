@@ -2,7 +2,7 @@
 # verify: exit 0 only when traffic from the gateway actually reaches the web pod.
 # On success, print the report JSON the framework stores.
 set -uo pipefail
-ns="${K8S_NAMESPACE:?}"
+ns="${K8S_NS:-${K8S_NAMESPACE:?}}"
 
 kubectl get pods -n "$ns" >/dev/null 2>&1 || { echo "k8s: namespace $ns 不可用" >&2; exit 2; }
 

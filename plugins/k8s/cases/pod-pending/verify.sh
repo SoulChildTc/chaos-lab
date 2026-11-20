@@ -3,7 +3,7 @@
 # first Pod would keep seeing the old Pending one after a patch creates a new
 # ReplicaSet, so readiness is read from the Deployment itself.
 set -uo pipefail
-ns="${K8S_NAMESPACE:?}"
+ns="${K8S_NS:-${K8S_NAMESPACE:?}}"
 
 kubectl get deploy cache -n "$ns" >/dev/null 2>&1 || { echo "k8s: 找不到 Deployment cache" >&2; exit 2; }
 

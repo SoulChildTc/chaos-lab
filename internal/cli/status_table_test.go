@@ -12,8 +12,9 @@ import (
 // (text/tabwriter) misaligns every row; the columns must line up visually.
 func TestStatusTableAlignsWithChineseHeaders(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", nil, true)
-	cli.RunStart(context.Background(), rt, "fake/other", nil, true)
+	cli.RunStart(context.Background(), rt, "fake", nil, true)
+	installSecondPlugin(t, rt)
+	cli.RunStart(context.Background(), rt, "fake2", nil, true)
 
 	out, err := captureStdout(t, func() (int, error) {
 		return cli.RunStatus(context.Background(), rt, "", false)
@@ -56,7 +57,7 @@ func TestStatusEmptySuggestsList(t *testing.T) {
 // status must accept a whole plugin name, since a plugin can own several cases.
 func TestStatusFiltersByPlugin(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	cli.RunStart(context.Background(), rt, "fake/env", nil, true)
+	cli.RunStart(context.Background(), rt, "fake", nil, true)
 
 	out, err := captureStdout(t, func() (int, error) {
 		return cli.RunStatus(context.Background(), rt, "fake", true)
@@ -64,7 +65,7 @@ func TestStatusFiltersByPlugin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(out), "fake/env#1") {
+	if !strings.Contains(string(out), "fake#1") {
 		t.Fatalf("plugin filter must match its instances: %q", out)
 	}
 }
