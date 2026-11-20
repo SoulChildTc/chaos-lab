@@ -109,7 +109,7 @@ func RunStart(ctx context.Context, rt *Runtime, ref string, kv map[string]string
 	defer cancel()
 
 	pluginDir := rt.Lister(pluginName).PluginDir
-	code, runErr := runAction(upCtx, pluginDir, pluginName, inst, "up")
+	_, code, runErr := pluginCall(upCtx, pluginDir, inst, "up")
 	if runErr != nil || code != 0 {
 		msg := describeFailure(runErr, code)
 		code := ExitPluginErr
@@ -194,32 +194,6 @@ func parseTimeout(s string, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return d
-}
-
-// runAction invokes one lifecycle subcommand of the plugin.
-func runAction(ctx context.Context, pluginDir, pluginName string, inst state.Instance, action string) (int, error) {
-	argsJSON, err := json.Marshal(inst.Args)
-	if err != nil {
-		return -1, err
-	}
-	argsFile, err := os.CreateTemp("", "chaoslab-args-*.json")
-	if err != nil {
-		return -1, err
-	}
-	defer os.Remove(argsFile.Name())
-	if _, err := argsFile.Write(argsJSON); err != nil {
-		argsFile.Close()
-		return -1, err
-	}
-	argsFile.Close()
-
-	code, err := runPluginCmd(ctx, pluginDir, pluginEnv(pluginName, pluginDir, inst.Slug, inst.Case), pluginDir+"/plugin",
-		action, inst.Case, "--instance="+inst.Slug, "--args=@"+argsFile.Name())
-	return code, err
-}
-
-func runPluginCmd(ctx context.Context, dir string, env []string, name string, args ...string) (int, error) {
-	return runProc(ctx, dir, env, name, args...)
 }
 
 func describeFailure(err error, code int) string {

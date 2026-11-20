@@ -3,6 +3,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -25,8 +26,8 @@ const (
 // Runtime is everything a command needs. Constructing one does not touch disk
 // beyond resolving the home directory.
 type Runtime struct {
-	Home      string
-	Store     *state.Store
+	Home       string
+	Store      *state.Store
 	PluginsDir string
 }
 
@@ -137,4 +138,19 @@ func pluginEnv(pluginName, pluginDir, instance, caseName string) []string {
 func writeRunDir(rt *Runtime) (string, error) {
 	dir := filepath.Join(rt.Home, "runs")
 	return dir, os.MkdirAll(dir, 0o755)
+}
+
+// reload re-reads one instance so a record written right after a store update
+// sees the updated counter and run path.
+func (rt *Runtime) reload(ctx context.Context, inst state.Instance) state.Instance {
+	f, err := rt.Store.Read(ctx)
+	if err != nil {
+		return inst
+	}
+	for _, in := range f.Instances {
+		if in.ID == inst.ID {
+			return in
+		}
+	}
+	return inst
 }
