@@ -188,3 +188,24 @@ func TestInstallAcceptsRelativeSourcePath(t *testing.T) {
 		t.Fatalf("relative install failed: %v", err)
 	}
 }
+
+func TestValidateAcceptsRelativePath(t *testing.T) {
+	parent := t.TempDir()
+	src := filepath.Join(parent, "fakeplug")
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "#!/bin/sh\ncase \"$1\" in schema) echo '{\"name\":\"fake\",\"args\":[]}' ;; list) echo '{\"cases\":[{\"id\":\"c\",\"title\":\"t\"}]}' ;; esac\n"
+	if err := os.WriteFile(filepath.Join(src, "plugin"), []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	wd, _ := os.Getwd()
+	if err := os.Chdir(parent); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chdir(wd) })
+
+	if _, err := plugin.Validate(context.Background(), "fakeplug"); err != nil {
+		t.Fatalf("relative validate failed: %v", err)
+	}
+}

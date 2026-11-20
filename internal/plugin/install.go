@@ -100,6 +100,11 @@ func Uninstall(root, name string, instances []state.Instance) error {
 // Validate checks a plugin directory without running up. It returns warnings
 // (not errors) for claims the framework cannot verify itself.
 func Validate(ctx context.Context, dir string) ([]string, error) {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, err
+	}
+	dir = abs
 	entry := filepath.Join(dir, "plugin")
 	st, err := os.Stat(entry)
 	if err != nil || st.IsDir() {
