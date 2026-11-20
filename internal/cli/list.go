@@ -11,7 +11,7 @@ import (
 // ListEntry is one row of `list`: a fault a plugin can inject.
 type ListEntry struct {
 	Plugin   string `json:"plugin"`
-	Scenario string `json:"scenario"`
+	Fault    string `json:"fault"`
 	Title    string `json:"title"`
 }
 
@@ -44,7 +44,7 @@ func RunList(ctx context.Context, rt *Runtime, filter string, asJSON bool) (int,
 			continue
 		}
 		for _, sc := range catalog.Scenarios {
-			entries = append(entries, ListEntry{Plugin: name, Scenario: sc.ID, Title: sc.Title})
+			entries = append(entries, ListEntry{Plugin: name, Fault: sc.ID, Title: sc.Title})
 		}
 	}
 
@@ -64,14 +64,14 @@ func RunList(ctx context.Context, rt *Runtime, filter string, asJSON bool) (int,
 	}
 	scWidth := 0
 	for _, e := range entries {
-		if w := displayWidth(e.Scenario); w > scWidth {
+		if w := displayWidth(e.Fault); w > scWidth {
 			scWidth = w
 		}
 	}
 
-	fmt.Println(head(pad("PLUGIN", nameWidth+2) + pad("SCENARIO", scWidth+2) + "FAULT"))
+	fmt.Println(head(pad("PLUGIN", nameWidth+2) + pad("FAULT", scWidth+2) + "DESCRIPTION"))
 	for _, e := range entries {
-		fmt.Println(pad(e.Plugin, nameWidth+2) + pad(e.Scenario, scWidth+2) + e.Title)
+		fmt.Println(pad(e.Plugin, nameWidth+2) + pad(e.Fault, scWidth+2) + e.Title)
 	}
 	fmt.Println()
 	fmt.Println(dim("These are the faults a plugin can inject. chaoslab start <plugin> injects all of them."))

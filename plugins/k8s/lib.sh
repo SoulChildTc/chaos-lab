@@ -30,7 +30,8 @@ plugin_state_root() {
 cluster_name() { printf 'lab-%s' "$instance"; }
 
 kubeconfig_path() {
-  printf '%s/%s.kubeconfig' "$(plugin_state_root)" "$instance"
+  # `list` also runs without --instance; keep the path well-formed then too.
+  printf '%s/%s.kubeconfig' "$(plugin_state_root)" "${instance:-<实例>}"
 }
 
 have_external() { [ -n "${KUBECONFIG_EXTERNAL:-}" ]; }

@@ -47,7 +47,7 @@ func TestListUnionAcrossPlugins(t *testing.T) {
 	}
 	var sawSecond bool
 	for _, e := range got {
-		if e.Plugin == "fake2" && e.Scenario == "only" {
+		if e.Plugin == "fake2" && e.Fault == "only" {
 			sawSecond = true
 		}
 	}

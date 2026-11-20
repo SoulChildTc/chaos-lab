@@ -66,10 +66,14 @@ JSON
       scenarios="$scenarios{\"id\":\"$id\",\"title\":\"$(case_title "$id")\"}"
     done
 
+    # `list` is also called without --instance (by `chaoslab list`), so the
+    # connection hint has to degrade gracefully instead of printing a placeholder.
+    local_kc="$(kubeconfig_path)"
+    local_ns="lab-${instance:-<实例>}"
     cat <<JSON
 {"scenarios":[$scenarios],"claims":[$claims],"up_timeout":"20m","check_timeout":"30m",
  "symptom":"一个刚部署的站点访问返回 502；同时有些 Pod 起不来、有些 PVC 挂不上。集群里一共埋了 ${#CASE_IDS[@]} 处问题。",
- "connect":["export KUBECONFIG=${KUBECONFIG_HINT:-~/.lab/k8s-state/PLACEHOLDER.kubeconfig}","namespace: lab-PLACEHOLDER","先看 kubectl get pods -A 和 kubectl get pvc -A"]}
+ "connect":["export KUBECONFIG=${local_kc}","namespace 前缀: ${local_ns}-<故障名>","先看 kubectl get pods -A 和 kubectl get pvc -A"]}
 JSON
     ;;
 
