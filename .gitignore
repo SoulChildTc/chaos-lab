@@ -1,1 +1,18 @@
+# agent workspace (plans, ledgers, review packages)
 .superpowers/
+
+# build output
+/chaoslab
+/dist/
+*.exe
+*.test
+*.out
+
+# editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# local scratch
+/tmp/
