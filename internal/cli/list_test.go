@@ -57,7 +57,7 @@ func TestListEmptySaysSo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(out), "没有") {
+	if !strings.Contains(string(out), "No scenarios") {
 		t.Fatalf("out=%q", out)
 	}
 }

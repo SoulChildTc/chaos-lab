@@ -17,28 +17,28 @@ func printPass(id string, report json.RawMessage) {
 		_ = json.Unmarshal(report, &r)
 	}
 
-	fmt.Printf("%s %s %s\n\n", glyphOK(), ok("通过"), dim(id))
+	fmt.Printf("%s %s %s\n\n", glyphOK(), ok("fixed"), dim(id))
 	if r.RootCause != "" {
-		fmt.Println(head("根因"))
+		fmt.Println(head("ROOT CAUSE"))
 		for _, line := range wrap(r.RootCause, 74) {
 			fmt.Println("  " + line)
 		}
 	}
 	if len(r.Clues) > 0 {
 		fmt.Println()
-		fmt.Println(head("关键线索"))
+		fmt.Println(head("CLUES"))
 		for _, c := range r.Clues {
 			fmt.Println("  " + dim("•") + " " + c)
 		}
 	}
 	fmt.Println()
-	fmt.Println(dim("环境还在，可以进去复盘。清理：chaoslab rm " + id))
+	fmt.Println(dim("The environment is still up if you want to look again. Clean up: chaoslab rm " + id))
 }
 
 // printNotFixed keeps the feedback loop legible while the fault is unfixed.
 func printNotFixed(id, message string) {
 	if message == "" {
-		message = "还没修好"
+		message = "not fixed yet"
 	}
 	fmt.Printf("%s %s %s\n", glyphPending(), warn(message), dim(id))
 }

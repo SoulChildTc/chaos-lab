@@ -53,11 +53,11 @@ func NewRuntimeDefault() (*Runtime, error) {
 // escape ~/.lab/plugins (a user-supplied name is joined into a path).
 func (rt *Runtime) pluginDir(name string) (string, error) {
 	if !pluginNameRe.MatchString(name) {
-		return "", fmt.Errorf("%w: %q 不是合法的插件名", plugin.ErrUserInput, name)
+		return "", fmt.Errorf("%w: %q is not a valid plugin name", plugin.ErrUserInput, name)
 	}
 	dir := filepath.Join(rt.PluginsDir, name)
 	if _, err := os.Stat(filepath.Join(dir, "plugin")); err != nil {
-		return "", fmt.Errorf("%w: 插件 %s 未安装（chaoslab plugin install）", plugin.ErrUserInput, name)
+		return "", fmt.Errorf("%w: plugin %s is not installed (chaoslab plugin install)", plugin.ErrUserInput, name)
 	}
 	return dir, nil
 }
@@ -134,7 +134,7 @@ func Converge(f *state.File) {
 		if processAlive(in.PID) {
 			continue
 		}
-		msg := "启动过程被中断（chaoslab 进程已不存在）"
+		msg := "start was interrupted (the chaoslab process is gone)"
 		in.Error = &msg
 		in.Phase = state.PhaseStopped
 		// The plugin may have created resources before dying, so the instance

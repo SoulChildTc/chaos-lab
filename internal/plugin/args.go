@@ -9,7 +9,7 @@ import (
 
 // ErrUserInput marks a mistake the user can fix (unknown flag, wrong type),
 // as opposed to a broken plugin. Callers map it to exit code 1.
-var ErrUserInput = errors.New("用法错误")
+var ErrUserInput = errors.New("invalid input")
 
 // Merge applies user-supplied key/value pairs on top of the schema defaults and
 // converts them to the declared types. An Arg with no Default stays absent
@@ -90,7 +90,7 @@ func (a Arg) HelpSummary() string {
 		if s != "" {
 			s += " "
 		}
-		s += fmt.Sprintf("(默认 %v)", a.Default)
+		s += fmt.Sprintf("(default %v)", a.Default)
 	}
 	return s
 }

@@ -32,7 +32,7 @@ func RunStatus(ctx context.Context, rt *Runtime, ref string, asJSON bool) (int, 
 	}
 
 	if ref != "" && len(out) == 0 {
-		return ExitUserError, fmt.Errorf("%w: 没有匹配 %s 的存活实例", plugin.ErrUserInput, ref)
+		return ExitUserError, fmt.Errorf("%w: no live instance matches %s", plugin.ErrUserInput, ref)
 	}
 
 	if asJSON {
@@ -42,7 +42,7 @@ func RunStatus(ctx context.Context, rt *Runtime, ref string, asJSON bool) (int, 
 		return ExitOK, printJSON(out)
 	}
 	if len(out) == 0 {
-		fmt.Println("没有正在运行的实例。用 chaoslab list 看看有哪些场景。")
+		fmt.Println("No live instances. chaoslab list shows what can be started.")
 		return ExitOK, nil
 	}
 
@@ -62,7 +62,7 @@ func RunStatus(ctx context.Context, rt *Runtime, ref string, asJSON bool) (int, 
 		})
 	}
 
-	header := []string{"ID", "阶段", "占用", "已运行", "检查", "错误"}
+	header := []string{"ID", "PHASE", "LIVE", "UPTIME", "CHECKS", "ERROR"}
 	fmt.Println(renderTable(header, rows))
 	return ExitOK, nil
 }
@@ -72,24 +72,24 @@ func RunStatus(ctx context.Context, rt *Runtime, ref string, asJSON bool) (int, 
 func phaseLabel(p state.Phase) string {
 	switch p {
 	case state.PhaseStarting:
-		return "启动中"
+		return "starting"
 	case state.PhaseRunning:
-		return "运行中"
+		return "running"
 	case state.PhasePassed:
-		return "已通过"
+		return "passed"
 	case state.PhaseStopped:
-		return "已停止"
+		return "stopped"
 	case state.PhaseDirty:
-		return "未清理"
+		return "dirty"
 	}
 	return string(p)
 }
 
 func yesNo(b bool) string {
 	if b {
-		return "是"
+		return "yes"
 	}
-	return "否"
+	return "no"
 }
 
 // renderTable pads every column to the widest cell, counting display width

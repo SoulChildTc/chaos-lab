@@ -53,12 +53,12 @@ func RunStop(ctx context.Context, rt *Runtime, ref string, asJSON bool) (int, er
 	var pluginMsg string
 	if runErr != nil {
 		if errors.Is(runErr, plugin.ErrTimeout) {
-			pluginMsg = fmt.Sprintf("down 超过 %s 被终止", timeout)
+			pluginMsg = fmt.Sprintf("down exceeded %s and was killed", timeout)
 		} else {
 			pluginMsg = runErr.Error()
 		}
 	} else if code != 0 {
-		pluginMsg = fmt.Sprintf("down 退出码 %d", code)
+		pluginMsg = fmt.Sprintf("down exited %d", code)
 	}
 
 	// Measure even when down failed: the user needs to know what is still there,
@@ -89,13 +89,13 @@ func RunStop(ctx context.Context, rt *Runtime, ref string, asJSON bool) (int, er
 		for _, v := range residuals {
 			parts = append(parts, fmt.Sprintf("%s（%s）", v.Claim, v.Detail))
 		}
-		msg = "down 报告成功，但仍有资源未释放：" + strings.Join(parts, ", ")
+		msg = "down reported success, but these are still held: " + strings.Join(parts, ", ")
 	case len(unchecked) > 0:
 		parts := make([]string, 0, len(unchecked))
 		for _, v := range unchecked {
 			parts = append(parts, v.Claim)
 		}
-		msg = "以下 claim 框架无法复查，由插件保证已释放：" + strings.Join(parts, ", ")
+		msg = "the framework cannot verify these claims; the plugin vouches for them: " + strings.Join(parts, ", ")
 	}
 
 	unverified := make([]string, 0, len(unchecked))
@@ -131,7 +131,7 @@ func RunStop(ctx context.Context, rt *Runtime, ref string, asJSON bool) (int, er
 		}
 		return nil
 	}); err != nil {
-		return ExitPluginErr, fmt.Errorf("%s 清理结果写入失败：%w", inst.ID, err)
+		return ExitPluginErr, fmt.Errorf("%s: recording the cleanup result failed: %w", inst.ID, err)
 	}
 
 	reloaded := rt.reload(ctx, *inst)
@@ -155,20 +155,20 @@ func RunStop(ctx context.Context, rt *Runtime, ref string, asJSON bool) (int, er
 		if asJSON {
 			return ExitPluginErr, printJSON(out)
 		}
-		fmt.Printf("%s %s %s\n", glyphFail(), bad("未清理干净"), dim(inst.ID))
+		fmt.Printf("%s %s %s\n", glyphFail(), bad("not clean"), dim(inst.ID))
 		for _, line := range wrap(msg, 72) {
 			fmt.Println("  " + line)
 		}
-		fmt.Println(dim("  排查后重试：chaoslab rm " + inst.ID))
-		return ExitPluginErr, fmt.Errorf("%s 未清理干净：%s", inst.ID, msg)
+		fmt.Println(dim("  retry after investigating: chaoslab rm " + inst.ID))
+		return ExitPluginErr, fmt.Errorf("%s is not clean: %s", inst.ID, msg)
 	}
 
 	if asJSON {
 		return ExitOK, printJSON(out)
 	}
-	fmt.Printf("%s %s %s\n", glyphOK(), ok("已清理"), dim(inst.ID))
+	fmt.Printf("%s %s %s\n", glyphOK(), ok("clean"), dim(inst.ID))
 	if len(unverified) > 0 {
-		fmt.Println(warn("  注意：以下 claim 框架未复查，由插件保证：") + strings.Join(unverified, ", "))
+		fmt.Println(warn("  note: the framework did not verify these claims; the plugin vouches for them: ") + strings.Join(unverified, ", "))
 	}
 	return ExitOK, nil
 }
@@ -188,7 +188,7 @@ func RunStopAll(ctx context.Context, rt *Runtime) (int, error) {
 		}
 	}
 	if len(ids) == 0 {
-		fmt.Println("没有正在运行的实例")
+		fmt.Println("No live instances.")
 		return ExitOK, nil
 	}
 	worst := ExitOK

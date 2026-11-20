@@ -34,7 +34,7 @@ func RunList(ctx context.Context, rt *Runtime, filter string, asJSON bool) (int,
 			}
 		}
 		if !found {
-			return ExitUserError, fmt.Errorf("%w: 插件 %s 未安装", plugin.ErrUserInput, filter)
+			return ExitUserError, fmt.Errorf("%w: plugin %s is not installed", plugin.ErrUserInput, filter)
 		}
 		names = []string{filter}
 	}
@@ -43,7 +43,7 @@ func RunList(ctx context.Context, rt *Runtime, filter string, asJSON bool) (int,
 	for _, name := range names {
 		cases, err := rt.Lister(name).List(ctx, "", nil)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "跳过插件 %s：%v\n", name, err)
+			fmt.Fprintf(os.Stderr, "skipping plugin %s: %v\n", name, err)
 			continue
 		}
 		for _, c := range cases {
@@ -55,7 +55,7 @@ func RunList(ctx context.Context, rt *Runtime, filter string, asJSON bool) (int,
 		return ExitOK, printJSON(entries)
 	}
 	if len(entries) == 0 {
-		fmt.Println("没有可用的场景。用 chaoslab plugin install 安装插件。")
+		fmt.Println("No scenarios yet. Install a plugin first: chaoslab plugin install <dir>")
 		return ExitOK, nil
 	}
 	rows := make([][]string, 0, len(entries))
@@ -67,7 +67,7 @@ func RunList(ctx context.Context, rt *Runtime, filter string, asJSON bool) (int,
 		}
 		rows = append(rows, []string{name, e.Title})
 	}
-	fmt.Println(head("场景" + strings.Repeat(" ", nameWidth-displayWidth("场景")+2) + "说明"))
+	fmt.Println(head("SCENARIO" + strings.Repeat(" ", nameWidth-displayWidth("SCENARIO")+2) + "DESCRIPTION"))
 	for _, r := range rows {
 		fmt.Println(r[0] + strings.Repeat(" ", nameWidth-displayWidth(r[0])+2) + r[1])
 	}

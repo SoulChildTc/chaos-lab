@@ -59,7 +59,7 @@ func RunCheck(ctx context.Context, rt *Runtime, ref string, watch bool, asJSON b
 		return ExitUserError, err
 	}
 	if !inst.Live {
-		return ExitUserError, fmt.Errorf("%w: %s 已经停止", plugin.ErrUserInput, inst.ID)
+		return ExitUserError, fmt.Errorf("%w: %s is already stopped", plugin.ErrUserInput, inst.ID)
 	}
 
 	window := defaultCheckWindow
@@ -91,7 +91,7 @@ func RunCheck(ctx context.Context, rt *Runtime, ref string, watch bool, asJSON b
 				printNotFixed(inst.ID, out.Message)
 				return ExitNotPassed, nil
 			}
-			fmt.Fprintf(os.Stderr, "%s %s 后重试\n", dim(inst.ID), dim(watchInterval.String()))
+			fmt.Fprintf(os.Stderr, "%s retrying in %s\n", dim(inst.ID), dim(watchInterval.String()))
 		default:
 			// The check itself is broken: not an attempt, no record.
 			return ExitPluginErr, err
@@ -102,7 +102,7 @@ func RunCheck(ctx context.Context, rt *Runtime, ref string, watch bool, asJSON b
 		}
 		if time.Now().After(deadline) {
 			writeRunRecord(rt, rt.reload(ctx, *inst), runlog.ResultTimeout, nil, nil, nil)
-			return ExitNotPassed, fmt.Errorf("%s 在 %s 内仍未修好", inst.ID, window)
+			return ExitNotPassed, fmt.Errorf("%s is still not fixed after %s", inst.ID, window)
 		}
 		select {
 		case <-ctx.Done():
@@ -154,8 +154,8 @@ func runCheckOnce(ctx context.Context, rt *Runtime, inst state.Instance) (CheckO
 	stdout, code, err := pluginCall(checkCtx, pluginDir, inst, "check")
 	if err != nil {
 		if errors.Is(err, plugin.ErrTimeout) {
-			return CheckOutput{Message: "检查超时"}, ExitPluginErr,
-				fmt.Errorf("%s 的 check 超过 %s 未返回，已终止", inst.ID, perCallTimeout())
+			return CheckOutput{Message: "check timed out"}, ExitPluginErr,
+				fmt.Errorf("%s: check did not return within %s, killed", inst.ID, perCallTimeout())
 		}
 		return CheckOutput{Message: err.Error()}, ExitPluginErr, err
 	}
@@ -170,23 +170,23 @@ func runCheckOnce(ctx context.Context, rt *Runtime, inst state.Instance) (CheckO
 			Raw       json.RawMessage `json:"-"`
 		}
 		if err := json.Unmarshal(stdout, &report); err != nil {
-			return CheckOutput{Message: "检查输出不是合法 JSON"}, ExitPluginErr,
-				fmt.Errorf("%w: %s 的 check 退出 0 但 stdout 不是 JSON：%q", plugin.ErrProtocol, inst.ID, truncate(stdout))
+			return CheckOutput{Message: "check output is not valid JSON"}, ExitPluginErr,
+				fmt.Errorf("%w: %s: check exited 0 but stdout is not JSON: %q", plugin.ErrProtocol, inst.ID, truncate(stdout))
 		}
 		if !report.Passed {
-			return CheckOutput{Passed: false, Message: "check 退出 0 但报告 passed=false"}, ExitPluginErr,
-				fmt.Errorf("%w: %s 的 check 退出 0 但报告 passed=false", plugin.ErrProtocol, inst.ID)
+			return CheckOutput{Passed: false, Message: "check exited 0 but reported passed=false"}, ExitPluginErr,
+				fmt.Errorf("%w: %s: check exited 0 but reported passed=false", plugin.ErrProtocol, inst.ID)
 		}
 		return CheckOutput{Passed: true, Report: json.RawMessage(stdout)}, ExitOK, nil
 	case 1:
 		rt.markAttempt(ctx, inst)
-		return CheckOutput{Passed: false, Message: "尚未修好"}, ExitNotPassed, nil
+		return CheckOutput{Passed: false, Message: "not fixed yet"}, ExitNotPassed, nil
 	case 2:
-		return CheckOutput{Message: "检查本身出错"}, ExitPluginErr,
-			fmt.Errorf("%s 的 check 报错（退出码 2），环境可能不可达", inst.ID)
+		return CheckOutput{Message: "the check itself failed"}, ExitPluginErr,
+			fmt.Errorf("%s: check failed (exit 2), the environment may be unreachable", inst.ID)
 	default:
-		return CheckOutput{Message: fmt.Sprintf("check 退出码 %d", code)}, ExitPluginErr,
-			fmt.Errorf("%w: %s 的 check 退出码 %d", plugin.ErrProtocol, inst.ID, code)
+		return CheckOutput{Message: fmt.Sprintf("check exited %d", code)}, ExitPluginErr,
+			fmt.Errorf("%w: %s: check exited %d", plugin.ErrProtocol, inst.ID, code)
 	}
 }
 

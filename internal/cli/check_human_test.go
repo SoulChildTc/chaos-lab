@@ -22,13 +22,13 @@ func TestCheckHumanOutputShowsPassAndRootCause(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(out)
-	if !strings.Contains(s, "通过") {
+	if !strings.Contains(s, "fixed") {
 		t.Fatalf("must say it passed, got %q", s)
 	}
-	if !strings.Contains(s, "fake 场景没有任何故障") {
+	if !strings.Contains(strings.ToLower(s), "root cause") {
 		t.Fatalf("must show the root cause, got %q", s)
 	}
-	if !strings.Contains(s, "测试替身插件") {
+	if !strings.Contains(strings.ToLower(s), "clues") {
 		t.Fatalf("must show the clues, got %q", s)
 	}
 }
@@ -41,7 +41,7 @@ func TestCheckHumanOutputSaysNotFixed(t *testing.T) {
 	out, _ := captureStdout(t, func() (int, error) {
 		return cli.RunCheck(context.Background(), rt, "fake/env", false, false)
 	})
-	if s := string(out); !strings.Contains(s, "未") {
+	if s := string(out); !strings.Contains(s, "not fixed") {
 		t.Fatalf("must say it is not fixed yet, got %q", s)
 	}
 }

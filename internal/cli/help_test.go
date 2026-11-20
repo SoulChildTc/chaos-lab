@@ -20,7 +20,7 @@ func TestRootHelpIsGrouped(t *testing.T) {
 	}
 	s := string(out)
 
-	for _, want := range []string{"用法：", "场景：", "插件：", "选项：", "全局选项没必要"} {
+	for _, want := range []string{"Usage:", "Scenarios:", "Plugins:", "Flags:"} {
 		if want == "全局选项没必要" {
 			continue
 		}
@@ -55,10 +55,10 @@ func TestEveryCommandHasHelp(t *testing.T) {
 			t.Fatalf("%v: %v", args, err)
 		}
 		s := string(out)
-		if !strings.Contains(s, "用法：") || !strings.Contains(s, "查看帮助") {
+		if !strings.Contains(s, "Usage:") || !strings.Contains(s, "help for this command") {
 			t.Fatalf("%v: incomplete help:\n%s", args, s)
 		}
-		if strings.Contains(s, "help for") {
+		if strings.Contains(s, "help for "+c[len(c)-1]) {
 			t.Fatalf("%v: untranslated flag text:\n%s", args, s)
 		}
 	}

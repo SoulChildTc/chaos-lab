@@ -52,7 +52,7 @@ func RunStart(ctx context.Context, rt *Runtime, ref string, kv map[string]string
 
 		for _, existing := range f.Instances {
 			if existing.Live && existing.Plugin == pluginName && existing.Case == caseName {
-				return fmt.Errorf("%w: %s 正在运行（实例 %s，已运行 %s）；先 chaoslab stop %s",
+				return fmt.Errorf("%w: %s is already running as %s (up %s); stop it first: chaoslab stop %s",
 					plugin.ErrUserInput, ref, existing.ID, shortDuration(time.Since(existing.StartedAt)), existing.ID)
 			}
 		}
@@ -69,10 +69,10 @@ func RunStart(ctx context.Context, rt *Runtime, ref string, kv map[string]string
 		}
 		theCase, found := findCase(cases, caseName)
 		if !found {
-			return fmt.Errorf("%w: 插件 %s 没有场景 %q", plugin.ErrUserInput, pluginName, caseName)
+			return fmt.Errorf("%w: plugin %s has no scenario %q", plugin.ErrUserInput, pluginName, caseName)
 		}
 		if id, claim, clash := claims.ConflictsWith(theCase.Claims, f.Instances); clash {
-			conflict = fmt.Errorf("%w: %s 已经占用 %s", plugin.ErrUserInput, id, claim)
+			conflict = fmt.Errorf("%w: %s already holds %s", plugin.ErrUserInput, id, claim)
 			return conflict
 		}
 
@@ -123,9 +123,9 @@ func RunStart(ctx context.Context, rt *Runtime, ref string, kv map[string]string
 		})
 		writeRunRecord(rt, rt.reload(ctx, inst), runlog.ResultStartFailed, nil, nil, nil)
 		if stateErr != nil {
-			return ExitPluginErr, fmt.Errorf("%s 启动失败：%s（且状态写入失败：%v）", inst.ID, msg, stateErr)
+			return ExitPluginErr, fmt.Errorf("%s failed to start: %s (and the state write failed: %v)", inst.ID, msg, stateErr)
 		}
-		return ExitPluginErr, fmt.Errorf("%s 启动失败：%s", inst.ID, msg)
+		return ExitPluginErr, fmt.Errorf("%s failed to start: %s", inst.ID, msg)
 	}
 
 	if err := rt.Store.Update(ctx, func(f *state.File) error {
@@ -139,7 +139,7 @@ func RunStart(ctx context.Context, rt *Runtime, ref string, kv map[string]string
 		return nil
 	}); err != nil {
 		// The environment is up but unrecorded; say so instead of pretending.
-		return ExitPluginErr, fmt.Errorf("%s 环境已启动，但状态写入失败：%w", inst.ID, err)
+		return ExitPluginErr, fmt.Errorf("%s is up, but recording its state failed: %w", inst.ID, err)
 	}
 
 	inst.Phase = state.PhaseRunning
@@ -150,8 +150,8 @@ func RunStart(ctx context.Context, rt *Runtime, ref string, kv map[string]string
 			Phase    string `json:"phase"`
 		}{inst.ID, inst.Slug, string(state.PhaseRunning)})
 	}
-	fmt.Printf("%s %s %s\n", glyphOK(), ok("已就绪"), dim(inst.ID))
-	fmt.Println(dim("  修好后运行：chaoslab check " + inst.ID))
+	fmt.Printf("%s %s %s\n", glyphOK(), ok("ready"), dim(inst.ID))
+	fmt.Println(dim("  when you think it is fixed: chaoslab check " + inst.ID))
 	return ExitOK, nil
 }
 
@@ -209,7 +209,7 @@ func describeFailure(err error, code int) string {
 	if err != nil {
 		return err.Error()
 	}
-	return "插件退出码 " + strconv.Itoa(code)
+	return "plugin exited " + strconv.Itoa(code)
 }
 
 func printJSON(v any) error {

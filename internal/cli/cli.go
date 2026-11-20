@@ -1,69 +1,19 @@
 package cli
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
 )
 
-// exitError carries a code out of a cobra RunE. Cobra has no notion of exit
-// codes, but every chaoslab command has one and scripts depend on them.
-type exitError struct {
-	code int
-	err  error
-}
-
-func (e *exitError) Error() string {
-	if e.err != nil {
-		return e.err.Error()
-	}
-	return fmt.Sprintf("exit %d", e.code)
-}
-
-func (e *exitError) Unwrap() error { return e.err }
-
-// fail returns an error that makes the process exit with code.
-func fail(code int, format string, args ...any) error {
-	return &exitError{code: code, err: fmt.Errorf(format, args...)}
-}
-
-// failWith keeps an existing error so errors.Is still works, and attaches a code.
-func failWith(code int, err error) error {
-	if err == nil {
-		err = errors.New("")
-	}
-	return &exitError{code: code, err: err}
-}
-
-// Run builds the command tree, executes it, and returns the process exit code
-// plus the message to print on stderr.
-func Run(ctx context.Context, rt *Runtime, argv []string) (int, error) {
-	root := newRoot(rt)
-	root.SetArgs(argv)
-	err := root.ExecuteContext(ctx)
-
-	var x *exitError
-	if errors.As(err, &x) {
-		if x.err == nil || x.err.Error() == "" {
-			return x.code, nil
-		}
-		return x.code, x.err
-	}
-	if err != nil {
-		return ExitUserError, err
-	}
-	return ExitOK, nil
-}
-
 func newRoot(rt *Runtime) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "chaoslab",
-		Short: "本地故障演练环境",
-		Long: `本地故障演练环境。起好带故障的环境，只告诉你现象；你排查修复，
-改对了由插件定义的规则判定。场景来自插件，装一个才有东西可跑。`,
+		Short: "Local fault-drill lab",
+		Long: `Local fault-drill lab. Bring up a broken environment, get the symptom only,
+and track down the fault yourself. A plugin decides whether you fixed it.
+Scenarios come from plugins, so install one before anything is runnable.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -76,20 +26,19 @@ func newRoot(rt *Runtime) *cobra.Command {
 			return fail(ExitUserError, "")
 		},
 	}
-	root.PersistentFlags().Bool("json", false, "机器可读输出")
-	root.PersistentFlags().Lookup("json").Usage = "机器可读输出"
+	root.PersistentFlags().Bool("json", false, "machine-readable output")
 	// -v is what people type first.
-	root.Flags().BoolP("version", "v", false, "版本与构建信息")
+	root.Flags().BoolP("version", "v", false, "print version information")
 
 	root.CompletionOptions.DisableDefaultCmd = true
 	installHelp(root)
 	root.SetHelpCommand(&cobra.Command{
-		Use:   "help [命令]",
-		Short: "查看命令帮助",
+		Use:   "help [command]",
+		Short: "Help about any command",
 		RunE: func(c *cobra.Command, args []string) error {
 			target, _, err := root.Find(args)
 			if err != nil || target == nil {
-				return fail(ExitUserError, "没有这个命令：%v", args)
+				return fail(ExitUserError, "unknown command: %v", args)
 			}
 			target.Help()
 			return nil
@@ -100,7 +49,7 @@ func newRoot(rt *Runtime) *cobra.Command {
 		newListCmd(rt),
 		newStartCmd(rt),
 		newCheckCmd(rt),
-		newStopCmd(rt, "stop", "清理环境并实测残留"),
+		newStopCmd(rt, "stop", "Tear the environment down and verify nothing leaked"),
 		newStopAliasCmd(rt),
 		newStatusCmd(rt),
 		newPluginCmd(rt),
@@ -116,9 +65,9 @@ func jsonFlag(cmd *cobra.Command) bool {
 
 func newListCmd(rt *Runtime) *cobra.Command {
 	return &cobra.Command{
-		Use:   "list [插件]",
-		Short: "列出场景",
-		Long:  "列出所有已装插件的场景。给出插件名则只列该插件的。",
+		Use:   "list [plugin]",
+		Short: "List scenarios",
+		Long:  "List scenarios from every installed plugin. Give a plugin name to list only that plugin's.",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			filter := ""
@@ -133,56 +82,60 @@ func newListCmd(rt *Runtime) *cobra.Command {
 func newCheckCmd(rt *Runtime) *cobra.Command {
 	var watch bool
 	cmd := &cobra.Command{
-		Use:   "check <插件>/<场景>[#序号]",
-		Short: "判定是否修好",
-		Long: `判定场景是否已修复。退出码 0 修好，2 还没修好，3 检查本身出错。
+		Use:   "check <plugin>/<case>[#n]",
+		Short: "Decide whether the fault is fixed",
+		Long: `Decide whether the scenario has been fixed. Exit code 0 means fixed, 2 means
+not yet, 3 means the check itself failed.
 
-单次判定直接返回；--watch 每 3 秒重试，直到通过或超过该场景的 check_timeout。`,
+A single check returns immediately; --watch retries every 3 seconds until it
+passes or the scenario's check_timeout is exceeded.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return failWith(RunCheck(cmd.Context(), rt, args[0], watch, jsonFlag(cmd)))
 		},
 	}
-	cmd.Flags().BoolVar(&watch, "watch", false, "轮询到通过或超时")
+	cmd.Flags().BoolVar(&watch, "watch", false, "poll until it passes or times out")
 	return cmd
 }
 
 func newStopCmd(rt *Runtime, use, short string) *cobra.Command {
 	var all bool
 	cmd := &cobra.Command{
-		Use:   use + " (<插件>/<场景>[#序号] | --all)",
+		Use:   use + " (<plugin>/<case>[#n] | --all)",
 		Short: short,
-		Long:  "让插件销毁环境，然后框架自己实测插件声明的资源是否真的释放了。没清干净会标为 dirty 并拦住重试。",
-		Args:  cobra.MaximumNArgs(1),
+		Long: `Have the plugin destroy the environment, then measure for yourself whether the
+resources it claimed are really gone. Anything left behind is marked dirty and
+blocks restarting that scenario.`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if all {
 				if len(args) > 0 {
-					return fail(ExitUserError, "--all 不能和实例引用一起用")
+					return fail(ExitUserError, "--all cannot be combined with an instance reference")
 				}
 				return failWith(RunStopAll(cmd.Context(), rt))
 			}
 			if len(args) != 1 {
-				return fail(ExitUserError, "需要指定实例，或用 --all：chaoslab %s <插件>/<场景>", use)
+				return fail(ExitUserError, "specify an instance, or use --all: chaoslab %s <plugin>/<case>", use)
 			}
 			return failWith(RunStop(cmd.Context(), rt, args[0], jsonFlag(cmd)))
 		},
 	}
-	cmd.Flags().BoolVar(&all, "all", false, "停掉所有存活实例")
+	cmd.Flags().BoolVar(&all, "all", false, "stop every live instance")
 	return cmd
 }
 
-// newStopAlias applies --all the same way stop does, but stays out of the help
-// listing: an alias is a convenience, not a second concept to learn.
+// newStopAliasCmd applies --all the same way stop does, but stays out of the
+// help listing: an alias is a convenience, not a second concept to learn.
 func newStopAliasCmd(rt *Runtime) *cobra.Command {
-	cmd := newStopCmd(rt, "rm", "清理环境并实测残留")
+	cmd := newStopCmd(rt, "rm", "Alias for stop")
 	cmd.Hidden = true
 	return cmd
 }
 
 func newStatusCmd(rt *Runtime) *cobra.Command {
 	return &cobra.Command{
-		Use:   "status [<插件>/<场景>[#序号]]",
-		Short: "查看存活实例",
+		Use:   "status [<plugin>/<case>[#n]]",
+		Short: "Show live instances",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ref := ""
@@ -197,7 +150,7 @@ func newStatusCmd(rt *Runtime) *cobra.Command {
 func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
-		Short: "版本与构建信息",
+		Short: "Print version and build information",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return failWith(RunVersion(jsonFlag(cmd)))
 		},
@@ -207,39 +160,39 @@ func newVersionCmd() *cobra.Command {
 func newPluginCmd(rt *Runtime) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "plugin",
-		Short: "管理插件",
+		Short: "Manage plugins",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return fail(ExitUserError, "需要子命令：install / uninstall / info / validate")
+			return fail(ExitUserError, "a subcommand is required: install / uninstall / info / validate")
 		},
 	}
 	cmd.AddCommand(
 		&cobra.Command{
-			Use:   "install <目录|git-url>",
-			Short: "装插件",
+			Use:   "install <dir|git-url>",
+			Short: "Install a plugin",
 			Args:  cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 				return failWith(RunPlugin(cmd.Context(), rt, "install", args, jsonFlag(cmd)))
 			},
 		},
 		&cobra.Command{
-			Use:   "uninstall <名字>",
-			Short: "卸插件，有存活实例时拒绝",
+			Use:   "uninstall <name>",
+			Short: "Remove a plugin (refused while it has live instances)",
 			Args:  cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 				return failWith(RunPlugin(cmd.Context(), rt, "uninstall", args, false))
 			},
 		},
 		&cobra.Command{
-			Use:   "info <名字>",
-			Short: "看插件支持的参数和场景",
+			Use:   "info <name>",
+			Short: "Show a plugin's arguments and scenarios",
 			Args:  cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 				return failWith(RunPlugin(cmd.Context(), rt, "info", args, jsonFlag(cmd)))
 			},
 		},
 		&cobra.Command{
-			Use:   "validate <目录>",
-			Short: "写插件时自检，不执行 up",
+			Use:   "validate <dir>",
+			Short: "Self-check a plugin without running up",
 			Args:  cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 				return failWith(RunPlugin(cmd.Context(), rt, "validate", args, false))
@@ -255,11 +208,12 @@ func newPluginCmd(rt *Runtime) *cobra.Command {
 // answered with the plugin's real parameter table.
 func newStartCmd(rt *Runtime) *cobra.Command {
 	return &cobra.Command{
-		Use:   "start <插件>/<场景> [--参数=值 ...]",
-		Short: "起环境，只给现象",
-		Long: `起一个场景的环境并注入故障，输出停在现象那一行，不告诉你原因。
+		Use:   "start <plugin>/<case> [--arg=value ...]",
+		Short: "Bring an environment up and show only the symptom",
+		Long: `Bring up one scenario and inject its fault. The output stops at the symptom and
+does not tell you the cause.
 
-每个场景支持的参数由插件声明，加上场景名再 --help 查看：
+Each scenario declares its own flags; add the scenario name to see them:
   chaoslab start k8s/pod-pending --help`,
 		DisableFlagParsing: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -284,14 +238,14 @@ func runStartArgs(cmd *cobra.Command, rt *Runtime, args []string) (int, error) {
 		case strings.HasPrefix(a, "--"):
 			k, v, ok := strings.Cut(strings.TrimPrefix(a, "--"), "=")
 			if !ok {
-				return ExitUserError, fmt.Errorf("参数 %q 缺少值，写成 --%s=<值>", a, k)
+				return ExitUserError, fmt.Errorf("flag %q needs a value, write --%s=<value>", a, k)
 			}
 			kv[k] = v
 		case strings.HasPrefix(a, "-"):
-			return ExitUserError, fmt.Errorf("未知选项 %q", a)
+			return ExitUserError, fmt.Errorf("unknown flag %q", a)
 		default:
 			if ref != "" {
-				return ExitUserError, fmt.Errorf("多余的参数 %q", a)
+				return ExitUserError, fmt.Errorf("unexpected argument %q", a)
 			}
 			ref = a
 		}
@@ -299,12 +253,10 @@ func runStartArgs(cmd *cobra.Command, rt *Runtime, args []string) (int, error) {
 
 	if ref == "" {
 		if wantHelp {
-			// `start --help` with no scenario: show the command's own help
-			// rather than complaining about a missing argument.
 			cmd.Help()
 			return ExitOK, nil
 		}
-		return ExitUserError, errors.New("需要指定场景：chaoslab start <插件>/<场景>")
+		return ExitUserError, fmt.Errorf("a scenario is required: chaoslab start <plugin>/<case>")
 	}
 	if wantHelp {
 		return printStartHelp(cmd.Context(), rt, ref)

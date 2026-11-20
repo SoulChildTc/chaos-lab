@@ -89,7 +89,7 @@ func TestStatusHumanOutputMentionsIDs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(out), "fake/env#1") || !strings.Contains(string(out), "运行中") {
+	if !strings.Contains(string(out), "fake/env#1") || !strings.Contains(string(out), "running") {
 		t.Fatalf("human output=%q", out)
 	}
 }

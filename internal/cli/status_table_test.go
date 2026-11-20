@@ -29,7 +29,7 @@ func TestStatusTableAlignsWithChineseHeaders(t *testing.T) {
 	// Every row must start the phase column at the same display offset.
 	positions := map[int]bool{}
 	for _, line := range lines[1:] {
-		idx := strings.Index(line, "运行中")
+		idx := strings.Index(line, "running")
 		if idx < 0 {
 			t.Fatalf("row without phase: %q", line)
 		}

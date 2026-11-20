@@ -28,17 +28,17 @@ func printStartHelp(ctx context.Context, rt *Runtime, ref string) (int, error) {
 	}
 	c, ok := findCase(cases, caseName)
 	if !ok {
-		return ExitUserError, fmt.Errorf("插件 %s 没有场景 %q，用 chaoslab list %s 查看", pluginName, caseName, pluginName)
+		return ExitUserError, fmt.Errorf("plugin %s has no scenario %q; see chaoslab list %s", pluginName, caseName, pluginName)
 	}
 	_ = pluginDir
 
 	fmt.Printf("%s/%s — %s\n\n", pluginName, c.ID, c.Title)
-	fmt.Printf("用法：chaoslab start %s/%s [选项]\n\n", pluginName, c.ID)
+	fmt.Printf("Usage: chaoslab start %s/%s [flags]\n\n", pluginName, c.ID)
 	if len(schema.Args) == 0 {
-		fmt.Println("该场景没有可配置参数。")
+		fmt.Println("This scenario takes no flags.")
 		return ExitOK, nil
 	}
-	fmt.Println("选项：")
+	fmt.Println("Flags:")
 	width := 0
 	for _, a := range schema.Args {
 		if w := displayWidth(a.FlagName()); w > width {

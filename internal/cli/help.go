@@ -17,9 +17,9 @@ type group struct {
 }
 
 var groups = []group{
-	{"场景", []string{"list", "start", "check", "status", "stop", "rm"}},
-	{"插件", []string{"plugin"}},
-	{"其他", []string{"version"}},
+	{"Scenarios", []string{"list", "start", "check", "status", "stop", "rm"}},
+	{"Plugins", []string{"plugin"}},
+	{"Other", []string{"version"}},
 }
 
 // installHelp replaces cobra's default help. Two reasons it is hand-rendered:
@@ -37,29 +37,29 @@ func installHelp(root *cobra.Command) {
 		}
 		b.WriteString("\n\n")
 
-		b.WriteString("用法：\n")
+		b.WriteString("Usage:\n")
 		if c.HasAvailableSubCommands() {
 			path := c.CommandPath()
 			if c.Parent() == nil {
 				path = c.Name()
 			}
-			b.WriteString("  " + path + " <命令> [flags]\n")
+			b.WriteString("  " + path + " <command> [flags]\n")
 		} else {
 			b.WriteString("  " + strings.TrimSuffix(c.UseLine(), " [flags]") + " [flags]\n")
 		}
 
 		b.WriteString(renderCommands(c))
 		if local := c.LocalFlags(); local.HasAvailableFlags() {
-			b.WriteString("\n选项：\n")
+			b.WriteString("\nFlags:\n")
 			b.WriteString(flagLines(local))
 		}
 		if inherited := c.InheritedFlags(); inherited.HasAvailableFlags() {
-			b.WriteString("\n全局选项：\n")
+			b.WriteString("\nGlobal Flags:\n")
 			b.WriteString(flagLines(inherited))
 		}
 
 		if c.HasAvailableSubCommands() {
-			b.WriteString("\n用 \"chaoslab <命令> --help\" 查看某个命令的详细说明。\n")
+			b.WriteString("\nUse \"chaoslab <command> --help\" for more information about a command.\n")
 		}
 
 		return strings.TrimRight(b.String(), "\n") + "\n"
@@ -110,7 +110,7 @@ func renderCommands(c *cobra.Command) string {
 		if len(subs) == 0 {
 			return
 		}
-		b.WriteString("\n" + title + "：\n")
+		b.WriteString("\n" + title + ":\n")
 		for _, sub := range subs {
 			b.WriteString("  " + pad(sub.Name(), width+2) + sub.Short + "\n")
 		}
@@ -126,11 +126,11 @@ func renderCommands(c *cobra.Command) string {
 		writeGroup(g.title, subs)
 	}
 	// Grouping is for the root command. A subcommand's subcommands are one flat
-	// list; calling them "其他命令" would be nonsense.
+	// list; calling a subcommand's children "Other" would be nonsense.
 	if c.Parent() == nil {
-		writeGroup("其他", rest)
+		writeGroup("Other", rest)
 	} else {
-		writeGroup("命令", rest)
+		writeGroup("Commands", rest)
 	}
 	return b.String()
 }
@@ -159,7 +159,7 @@ func flagLines(fs *pflag.FlagSet) string {
 		}
 		usage := f.Usage
 		if strings.HasPrefix(usage, "help for ") {
-			usage = "查看帮助"
+			usage = "help for this command"
 		}
 		rows = append(rows, row{name, usage})
 	})

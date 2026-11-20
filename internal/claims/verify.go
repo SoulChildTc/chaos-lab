@@ -124,7 +124,7 @@ func verifyOne(ctx context.Context, c string) Verdict {
 		if isDockerMissingObject(string(out)) {
 			return Verdict{Claim: c, Checked: true, Released: true, Detail: "docker object is gone"}
 		}
-		return Verdict{Claim: c, Detail: "docker 无法判定：" + firstLine(string(out))}
+		return Verdict{Claim: c, Detail: "cannot judge docker: " + firstLine(string(out))}
 	}
 	return Verdict{Claim: c, Detail: "unknown claim prefix; the plugin is responsible for this one"}
 }
