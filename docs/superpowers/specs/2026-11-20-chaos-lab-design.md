@@ -72,7 +72,7 @@
 chaoslab (Go 二进制)
   ├── 插件发现与安装    ~/.lab/plugins/<name>/plugin
   ├── 参数解析与校验    schema 声明的声明式参数
-  ├── 冲突检测          claims 渲染与比对
+  ├── 冲突检测          claims 比对
   ├── 生命周期调用      up / down / check 子进程
   ├── 状态与记录        ~/.lab/state/、~/.lab/runs/
   └── 文案渲染          现象、通过提示、根因复盘
@@ -131,14 +131,20 @@ plugin check  <case> --instance=<slug> --args=@<file>
 
 ### 9.3 `list --json`
 
+```
+plugin list --json [--instance=<slug>] [--args=@<file>]
+```
+
+`--instance` 与 `--args` 可选。框架在 `start` 时两者都传，插件据此返回**已渲染好的** claims。不传时按默认值渲染（`validate` 用）。
+
 ```json
 {
   "cases": [
     {
       "id": "ingress-502",
       "title": "站点访问返回 502",
-      "claims": ["kind:${LAB_INSTANCE}"],
-      "up_timeout": "5m",
+      "claims": ["kind:lab-k8s-ingress-502-1"],
+      "up_timeout": "10m",
       "check_timeout": "10m"
     }
   ]
@@ -147,7 +153,7 @@ plugin check  <case> --instance=<slug> --args=@<file>
 
 - `id`：场景标识，`^[a-z0-9][a-z0-9-]*$`
 - `title`：一句话现象标题
-- `claims`：资源占用声明，模板字符串（见 9.7）
+- `claims`：**字符串数组，已渲染完毕**。框架只做精确相等比对，不解析、不渲染（见 9.7）
 - `up_timeout` / `check_timeout`：可选，框架默认 `5m` / `10m`。这是插件自己对自己起环境耗时的判断，框架不猜。
 
 ### 9.4 `schema --json`
@@ -193,11 +199,9 @@ plugin check  <case> --instance=<slug> --args=@<file>
 
 ### 9.7 claims
 
-声明式字符串，模板变量：
-- `${LAB_INSTANCE}` → slug
-- `${args.<name>}` → 参数值
+声明式字符串，**由插件渲染好后返回**，框架只做精确相等比对。
 
-渲染后按精确相等比对。两个实例有任意一个相同 claim 即冲突，`start` 拒绝并说明是哪个 claim 撞了谁。
+`list` 收到 `--instance` 与 `--args` 后自行决定返回哪些 claim。例子：`k8s` 插件在 `kubeconfig` 参数为空时返回 `kind:lab-<slug>`，非空时返回 `kube:<context>/<namespace>`——因为复用时它不创建集群，也不该声明集群所有权。模板、条件、默认值全部由插件处理，框架没有任何模板语言。
 
 框架内置四类校验器（用于 `stop` 后复查，见 10.4）：
 
@@ -245,11 +249,13 @@ plugin check  <case> --instance=<slug> --args=@<file>
 
 1. 校验插件已安装、场景存在于 `list` 输出
 2. 解析参数（schema 默认值 + 用户传入），拒绝未知参数与类型不符
-3. 渲染 claims
-4. **加锁 → 读状态 → 校验 → 分配序号 → 写入 `phase=starting, live=true, pid=<自身 pid>` → 解锁**。锁只覆盖这一段（毫秒级），不跨插件调用，否则并行实例全被串行化
-5. 冲突检查：与所有 `live=true` 实例比对 claims；同 `<plugin>/<case>` 已有 `live=true` 实例（含 `dirty`）则拒绝，提示实例 ID 与已跑时长
-6. 执行 `plugin up`，超时按 `up_timeout`，超时杀进程组
-7. 成功 → 加锁写入 `phase=running`；失败或超时 → `phase=stopped`，`live=true`（可能留了资源），把 stderr 抛给用户
+3. 分配 slug（需要序号，所以先加锁取号）
+4. **加锁 → 读状态 → 分配序号 → 写入 `phase=starting, live=true, pid=<自身 pid>` → 解锁**。锁只覆盖这一段（毫秒级），不跨插件调用，否则并行实例全被串行化
+5. 带 `--instance` 与 `--args` 调 `plugin list`，取该场景**已渲染的** claims
+6. 冲突检查：与所有 `live=true` 实例比对 claims；同 `<plugin>/<case>` 已有 `live=true` 实例（含 `dirty`）则拒绝，提示实例 ID 与已跑时长。冲突则回滚刚写入的记录
+7. 把 claims 写进实例记录
+8. 执行 `plugin up`，超时按 `up_timeout`，超时杀进程组
+9. 成功 → 加锁写入 `phase=running`；失败或超时 → `phase=stopped`，`live=true`（可能留了资源），把 stderr 抛给用户
 
 失败时框架不尝试清理。提示用户 `chaoslab stop <id>` 让插件自己 `down`。
 
@@ -386,9 +392,8 @@ chaoslab plugin validate <dir>
 - `plugin` 可执行
 - `schema` / `list` 输出符合协议、字段合法
 - 场景 id 唯一、命名合法
-- claims 模板语法合法（`${LAB_INSTANCE}` 或 `${args.<已声明参数>}`）
-- 参数在 claims 里被引用但无 `default` → **warning**（运行时可传，validate 无法渲染，不算错）
-- 未知 claim 前缀 → warning
+- `list` 在无参数、以及每个参数取默认值两种情况下都能跑通（参数无默认值则只用无参数那次）
+- claims 是字符串数组，前缀是否已知（未知 → warning）
 
 真实校验靠 install 后 `start`。
 
