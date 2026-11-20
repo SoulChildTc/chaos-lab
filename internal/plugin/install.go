@@ -27,6 +27,13 @@ var knownClaimPrefixes = []string{"port:", "docker:", "kind:", "dir:"}
 // rejected instead of installed broken.
 func Install(ctx context.Context, src, root string) (string, error) {
 	dir := src
+	if !isGitURL(src) {
+		abs, err := filepath.Abs(src)
+		if err != nil {
+			return "", err
+		}
+		dir = abs
+	}
 	if isGitURL(src) {
 		tmp, err := os.MkdirTemp("", "chaoslab-clone-*")
 		if err != nil {

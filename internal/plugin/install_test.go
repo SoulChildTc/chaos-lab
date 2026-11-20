@@ -165,3 +165,26 @@ func TestValidateFailsOnBrokenProtocol(t *testing.T) {
 		t.Fatalf("want ErrProtocol, got %v", err)
 	}
 }
+
+func TestInstallAcceptsRelativeSourcePath(t *testing.T) {
+	// A relative path must work: the plugin child runs with its own directory as
+	// cwd, so an unresolved relative entry path would be a fork/exec error.
+	parent := t.TempDir()
+	src := filepath.Join(parent, "fakeplug")
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "plugin"), []byte(fakePluginBody), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	wd, _ := os.Getwd()
+	if err := os.Chdir(parent); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chdir(wd) })
+
+	root := t.TempDir()
+	if _, err := plugin.Install(context.Background(), "fakeplug", root); err != nil {
+		t.Fatalf("relative install failed: %v", err)
+	}
+}
