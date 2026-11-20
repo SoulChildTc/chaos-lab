@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# fake plugin: zero-dependency reference implementation of the chaos-lab plugin
+# protocol. It fakes an environment with one directory, so the framework's
+# conflict detection, claim verification and dirty handling can be tested on a
+# machine without Docker.
+#
+# Deliberately no `set -e`: a check that finds the environment un-fixed must
+# exit 1, not die and be mistaken for a broken check.
+set -uo pipefail
+
+here="$(cd "$(dirname "$0")" && pwd)"
+state_root="${CHAOSLAB_HOME:-$HOME/.lab}/fake-state"
+
+cmd="${1:-}"
+shift || true
+
+case_name=""
+instance=""
+args_file=""
+for a in "$@"; do
+  case "$a" in
+    --instance=*) instance="${a#--instance=}" ;;
+    --args=@*)    args_file="${a#--args=@}" ;;
+    --*)          ;;
+    *)            [ -z "$case_name" ] && case_name="$a" ;;
+  esac
+done
+
+json_get() {
+  [ -n "$args_file" ] && [ -f "$args_file" ] || return 0
+  grep -o "\"$1\":[^,}]*" "$args_file" | head -1 | cut -d: -f2- | tr -d '"'
+}
+
+flag() { [ "$(json_get "$1")" = "true" ]; }
+
+workdir() { printf '%s/%s' "$state_root" "$instance"; }
+emit_report() {
+  printf '{"passed":true,"root_cause":"fake 场景没有任何故障，check 必然通过","clues":["这是测试替身插件"]}\n'
+}
+
+case "$cmd" in
+  schema)
+    cat <<'JSON'
+{"name":"fake","version":"0.1.0","description":"零依赖测试替身插件","args":[
+ {"name":"port","type":"int","default":0,"help":"非 0 时声明一个 port claim"},
+ {"name":"fail-up","type":"bool","default":false,"help":"让 up 失败"},
+ {"name":"fail-down","type":"bool","default":false,"help":"让 down 失败"},
+ {"name":"leak-dir","type":"bool","default":false,"help":"down 成功后仍留下环境目录"},
+ {"name":"broken","type":"bool","default":false,"help":"让 check 判定为未修好"},
+ {"name":"check-timeout","type":"string","help":"覆盖该场景的 check_timeout"}
+]}
+JSON
+    ;;
+
+  list)
+    port="$(json_get port)"
+    timeout="$(json_get check-timeout)"
+    [ -z "$port" ] && port=0
+    dir="$state_root/${instance:-SLUG}"
+    claims="\"dir:$dir\""
+    [ "$port" != "0" ] && claims="\"port:$port\",$claims"
+    timeout_field=""
+    [ -n "$timeout" ] && timeout_field=",\"check_timeout\":\"$timeout\""
+    cat <<JSON
+{"cases":[
+ {"id":"env","title":"fake 环境已就绪"$timeout_field,"claims":[$claims]},
+ {"id":"other","title":"fake 第二个场景"$timeout_field,"claims":[$claims]}
+]}
+JSON
+    ;;
+
+  up)
+    [ -n "$case_name" ] || { echo "fake: missing case" >&2; exit 2; }
+    [ -n "$instance" ] || { echo "fake: missing --instance" >&2; exit 2; }
+    flag fail-up && { echo "fake: up failed on purpose" >&2; exit 1; }
+    mkdir -p "$(workdir)" || exit 1
+    echo "fake: $case_name 环境已就绪" >&2
+    echo "fake: 现象描述：什么都没有发生，因为这是测试替身" >&2
+    ;;
+
+  down)
+    flag fail-down && { echo "fake: down failed on purpose" >&2; exit 1; }
+    if flag leak-dir; then
+      echo "fake: 故意留下 $(workdir)（leak-dir）" >&2
+      exit 0
+    fi
+    rm -rf "$(workdir)"
+    echo "fake: 环境已清理" >&2
+    ;;
+
+  check)
+    flag broken && { echo "fake: 还没修好" >&2; exit 1; }
+    [ -d "$(workdir)" ] || { echo "fake: 环境不存在，无法检查" >&2; exit 2; }
+    emit_report
+    ;;
+
+  *)
+    echo "fake: unknown subcommand '$cmd'" >&2
+    exit 2
+    ;;
+esac
