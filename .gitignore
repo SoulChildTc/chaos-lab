@@ -16,3 +16,6 @@
 
 # local scratch
 /tmp/
+
+# JetBrains
+.idea/
