@@ -1,3 +1,5 @@
+> 状态：初版设计。后续有重大修订：实例从「插件/场景」改为「整个插件」一个实例，`up`/`down`/`check` 不再接受场景参数，`start` 输出插件提供的 symptom 与 connect。现行行为以 README 与 docs/plugin-protocol.md 为准，本文仅记录最初的设计取舍。
+
 # chaos-lab 设计文档
 
 日期：2026-11-20

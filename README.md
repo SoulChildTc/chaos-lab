@@ -52,9 +52,9 @@ CLUES
 ## 为什么用它
 
 - **不点明故障。** 交互式演练平台通常直接告诉你哪个对象坏了。这里只给一句现象，你得自己缩小范围。
-- **判定是产品的一部分。** 混沌工程工具往环境里注入故障，测的是系统韧性，不管你修得对不对。这里 `check` 通过才算修好，退出码 `2`（没修好）和 `3`（场景本身坏了）分开。
+- **判定是产品的一部分。** 混沌工程工具往环境里注入故障，测的是系统韧性，不管你修得对不对。这里 `check` 通过才算修好，退出码 `2`（没修好）和 `3`（插件坏了）分开。
 - **清理可验证。** 插件声明自己占用哪些资源，框架在 `stop` 后自己实测一遍，没清干净会被抓出来标 `dirty`。自己写脚本也能搭，但清理和验收都得自己写，失败一次就可能留一堆资源。
-- **框架与技术栈零耦合。** Go 单二进制，不含任何具体技术栈的知识。加一个 MySQL 或 Redis 场景，不需要改框架一行代码。
+- **框架与技术栈零耦合。** Go 单二进制，不含任何具体技术栈的知识。加一个 MySQL 或 Redis 插件，不需要改框架一行代码。
 
 ## 安装
 
@@ -84,7 +84,7 @@ cd chaos-lab
 go build -o ~/.local/bin/chaoslab ./cmd/chaoslab
 ```
 
-**装插件。** 框架装好之后是空的，场景都来自插件：
+**装插件。** 框架装好之后是空的，故障都来自插件：
 
 ```bash
 # 用安装脚本
@@ -137,7 +137,7 @@ CONNECT
 | `chaoslab status [<实例>] [--json]` | 活跃实例 |
 | `chaoslab plugin install <目录\|git-url>` | 装插件 |
 | `chaoslab plugin uninstall <名字>` | 卸插件，有存活实例时拒绝 |
-| `chaoslab plugin info <名字>` | 看插件支持的参数和场景 |
+| `chaoslab plugin info <名字>` | 看插件支持的参数和能注入的故障 |
 | `chaoslab plugin validate <目录>` | 写插件时自检，不执行 `up` |
 | `chaoslab version [--json]` | 版本与构建信息 |
 
@@ -150,13 +150,13 @@ CONNECT
 | 码 | 含义 | 你该做什么 |
 |---|---|---|
 | `0` | 修好了 / 命令成功 | — |
-| `1` | 用法错误、场景不存在、资源冲突 | 改命令 |
+| `1` | 用法错误、插件不存在、资源冲突 | 改命令 |
 | `2` | 还没修好 | 继续排查 |
-| `3` | 场景本身坏了（插件出错、协议不合规、检查超时） | 去修插件 |
+| `3` | 插件本身坏了（执行出错、协议不合规、检查超时） | 去修插件 |
 
 把 `2` 和 `3` 分开，是因为前者该继续排查，后者该去修插件。
 
-不同场景的实例可以并行跑。冲突靠插件声明的 claim 检测，撞了会告诉你是谁占了什么；同一场景的第二个实例会被拒绝，除非先停掉第一个。
+不同插件的实例可以并行跑，冲突靠插件声明的 claim 检测，撞了会告诉你是谁占了什么。同一个插件的第二个实例会被拒绝，先停掉第一个。
 
 ## 插件
 
@@ -167,12 +167,12 @@ CONNECT
 | `k8s` | 五个 Kubernetes 故障，全部注入一套一次性 kind 集群 | [plugins/k8s/README.md](plugins/k8s/README.md) |
 | `fake` | 零依赖测试替身，也是写插件的最小参考 | [plugins/fake/README.md](plugins/fake/README.md) |
 
-每个插件自带 README，讲它有哪些场景、各埋了什么坑、需要什么依赖、参数怎么用。
+每个插件自带 README，讲它注入哪些故障、需要什么依赖、参数怎么用。
 
 想接 MySQL、Redis、ES、Mongo，或者用 docker compose 起一套环境，都走同一套协议：
 
 - [docs/plugin-protocol.md](docs/plugin-protocol.md)：子命令、执行环境、claims、bash 与 Python 骨架、三个常见错误
-- 参考实现：[plugins/fake](plugins/fake/README.md)（最小）、[plugins/k8s](plugins/k8s/README.md)（真实场景）
+- 参考实现：[plugins/fake](plugins/fake/README.md)（最小）、[plugins/k8s](plugins/k8s/README.md)（真实插件）
 
 ```bash
 chaoslab plugin validate ./myplugin   # 静态检查，不执行 up
@@ -181,12 +181,12 @@ chaoslab plugin install ./myplugin
 
 ## Agent 评测
 
-起场景、把入口交给 Agent、由系统判定它修好没有。所有命令都有 `--json`：
+起环境、把连接方式交给 Agent、由系统判定它修好没有。所有命令都有 `--json`：
 
 ```bash
 chaoslab start k8s --json    # {"instance":"k8s#1","symptom":"...","connect":["..."]}
 chaoslab status --json
-chaoslab check k8s --json    # {"passed":false,"report":{"cases":[{"id":"pvc-unbound","passed":false}]}}
+chaoslab check k8s --json    # {"passed":false,"report":{"cases":[{"id":"pvc-unbound","passed":false},...]}}
 chaoslab stop k8s --json     # {"released":true,"verdicts":[...]}
 ```
 
@@ -267,6 +267,6 @@ scripts/               安装脚本与 K8s 端到端验收
 
 早期版本，接口还在动。
 
-已验证：macOS + OrbStack 上五个 K8s 场景依次跑通 `start → check(未修=2) → stop → 无残留`，同一场景连续三轮零残留。
+已验证：macOS + OrbStack 上 `chaoslab start k8s` 一套集群注入五个故障 → 未修时 `check` 退出 2 → 全部修复后退出 0 → `stop` 后 kind 集群清空。
 
 未验证：Docker Desktop 和 Linux 上的 kind 行为；`--kubeconfig` 复用已有集群这条路径没有实跑过。

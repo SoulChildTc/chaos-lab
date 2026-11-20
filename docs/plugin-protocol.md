@@ -405,7 +405,7 @@ chaoslab list
 chaoslab start myplugin/demo
 ```
 
-`validate` 会检查协议结构、场景 id、claim 前缀。它不跑 `up`——真实校验只能靠 `start`。
+`validate` 会检查协议结构、故障 id、claim 前缀。它不跑 `up`——真实校验只能靠 `start`。
 
 本仓库里有两个可参考的完整实现：
 

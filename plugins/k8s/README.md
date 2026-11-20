@@ -20,7 +20,7 @@ chaoslab start k8s # 起环境，全部注入
 
 `brew install kind kubectl` 即可，Docker 用 Docker Desktop 或 OrbStack。
 
-## 场景
+## 故障
 
 | 故障 | 现象 | 埋的坑 |
 |---|---|---|
@@ -102,7 +102,7 @@ chaoslab start k8s --kubeconfig ~/.kube/config
 - claim 从 `kind:lab-<slug>` 变成 `kube:<context>/lab-<slug>`，冲突检测仍然生效
 - 该集群必须能拉取镜像（本插件不会向外部集群预加载镜像）
 
-这是给“手边已经有一个集群、不想再起 kind”的场景用的。默认模式仍然是零污染的一次性集群。
+这是给“手边已经有一个集群、不想再起 kind”的时候用的。默认模式仍然是零污染的一次性集群。
 
 ## 时间
 
@@ -116,7 +116,7 @@ chaoslab start k8s --kubeconfig ~/.kube/config
 
 ## 镜像预加载
 
-kind 集群**不共享**宿主 Docker 的镜像缓存，它会自己去 registry 拉。为了在离线或网络受限时也能用，插件会检查每个场景目录下的 `images.txt`，凡是本机 Docker 已有的镜像就灌进集群：
+kind 集群**不共享**宿主 Docker 的镜像缓存，它会自己去 registry 拉。为了在离线或网络受限时也能用，插件会检查每个故障目录下的 `images.txt`，凡是本机 Docker 已有的镜像就灌进集群：
 
 ```
 k8s: 预加载镜像 nginx:1.27-alpine
