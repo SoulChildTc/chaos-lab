@@ -108,7 +108,7 @@ chaoslab list                             # 这时才有东西可跑
 chaoslab list                            # 有哪些场景
 chaoslab start <插件>/<场景>              # 起一个，只给现象
 chaoslab check <插件>/<场景> --watch      # 一边修一边轮询，最长 20 分钟
-chaoslab stop <插件>/<场景>               # 清理，并实测是否真的清干净
+chaoslab rm <插件>/<场景>                 # 清理并实测残留（stop 的别名）
 ```
 
 `start` 之后环境在哪里、怎么连进去，由插件决定，它会告诉你。拿自带的 K8s 插件举例：
@@ -128,8 +128,8 @@ kubectl get pods -A
 | `chaoslab list [--json]` | 所有已装插件的场景 |
 | `chaoslab start <插件>/<场景> [--参数=值] [--help] [--json]` | 起环境，`--help` 看该插件的参数表 |
 | `chaoslab check <引用> [--watch] [--json]` | 判定是否修好，`--watch` 每 3 秒轮询 |
-| `chaoslab stop <引用> [--json]` | 清理并实测残留 |
-| `chaoslab stop --all` | 停掉全部 |
+| `chaoslab stop <引用> [--json]` | 清理并实测残留，别名 `rm` |
+| `chaoslab stop --all` | 停掉全部，别名 `rm --all` |
 | `chaoslab status [<实例>] [--json]` | 活跃实例 |
 | `chaoslab plugin install <目录\|git-url>` | 装插件 |
 | `chaoslab plugin uninstall <名字>` | 卸插件，有存活实例时拒绝 |

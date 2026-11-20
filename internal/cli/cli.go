@@ -16,8 +16,8 @@ const usage = `chaoslab — 本地故障演练实验室
   chaoslab list [--json]
   chaoslab start <plugin>/<case> [--arg=value ...] [--json] [--help]
   chaoslab check (<plugin>/<case> | <instance-id>) [--watch] [--json]
-  chaoslab stop (<plugin>/<case> | <instance-id>) [--json]
-  chaoslab stop --all
+  chaoslab stop|rm (<plugin>/<case> | <instance-id>) [--json]
+  chaoslab stop|rm --all
   chaoslab status [<instance-id>] [--json]
   chaoslab plugin install <git-url|dir>
   chaoslab plugin uninstall <name>
@@ -82,7 +82,7 @@ func Run(ctx context.Context, rt *Runtime, argv []string) (int, error) {
 		}
 		return RunCheck(ctx, rt, positional[0], watch, asJSON)
 
-	case "stop":
+	case "stop", "rm":
 		all := false
 		var positional []string
 		for _, a := range args[1:] {
