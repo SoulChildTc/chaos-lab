@@ -62,10 +62,8 @@ func newRoot(rt *Runtime) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "chaoslab",
 		Short: "本地故障演练环境",
-		Long: `起好带故障的环境，只给现象；你排查修复，改对了由插件定义的规则实测校验。
-
-场景来自插件，装一个才有东西可跑：
-  chaoslab plugin install ~/.local/share/chaoslab/plugins/k8s`,
+		Long: `本地故障演练环境。起好带故障的环境，只告诉你现象；你排查修复，
+改对了由插件定义的规则判定。场景来自插件，装一个才有东西可跑。`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -103,7 +101,7 @@ func newRoot(rt *Runtime) *cobra.Command {
 		newStartCmd(rt),
 		newCheckCmd(rt),
 		newStopCmd(rt, "stop", "清理环境并实测残留"),
-		newStopCmd(rt, "rm", "stop 的别名"),
+		newStopAliasCmd(rt),
 		newStatusCmd(rt),
 		newPluginCmd(rt),
 		newVersionCmd(),
@@ -170,6 +168,14 @@ func newStopCmd(rt *Runtime, use, short string) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&all, "all", false, "停掉所有存活实例")
+	return cmd
+}
+
+// newStopAlias applies --all the same way stop does, but stays out of the help
+// listing: an alias is a convenience, not a second concept to learn.
+func newStopAliasCmd(rt *Runtime) *cobra.Command {
+	cmd := newStopCmd(rt, "rm", "清理环境并实测残留")
+	cmd.Hidden = true
 	return cmd
 }
 
@@ -253,7 +259,7 @@ func newStartCmd(rt *Runtime) *cobra.Command {
 		Short: "起环境，只给现象",
 		Long: `起一个场景的环境并注入故障，输出停在现象那一行，不告诉你原因。
 
-可用的参数由插件声明，用 --help 查看：
+每个场景支持的参数由插件声明，加上场景名再 --help 查看：
   chaoslab start k8s/pod-pending --help`,
 		DisableFlagParsing: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -292,6 +298,12 @@ func runStartArgs(cmd *cobra.Command, rt *Runtime, args []string) (int, error) {
 	}
 
 	if ref == "" {
+		if wantHelp {
+			// `start --help` with no scenario: show the command's own help
+			// rather than complaining about a missing argument.
+			cmd.Help()
+			return ExitOK, nil
+		}
 		return ExitUserError, errors.New("需要指定场景：chaoslab start <插件>/<场景>")
 	}
 	if wantHelp {

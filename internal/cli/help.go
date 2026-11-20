@@ -9,10 +9,22 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// installHelp replaces cobra's default help with a compact, localised one.
-// Cobra's templates say "Usage:", "Flags:", "Available Commands:" next to
-// Chinese descriptions, and pflag pads with byte counts, which misaligns any
-// table containing CJK text. Rendering from the flag set gives exact control.
+// Command groups, in display order. Professional CLI help tells you which
+// commands you will need first instead of dumping one alphabetical list.
+type group struct {
+	title string
+	names []string
+}
+
+var groups = []group{
+	{"场景", []string{"list", "start", "check", "status", "stop", "rm"}},
+	{"插件", []string{"plugin"}},
+	{"其他", []string{"version"}},
+}
+
+// installHelp replaces cobra's default help. Two reasons it is hand-rendered:
+// cobra's headings are English next to Chinese descriptions, and pflag pads by
+// byte count, which misaligns any table containing CJK text.
 func installHelp(root *cobra.Command) {
 	var render func(c *cobra.Command) string
 	render = func(c *cobra.Command) string {
@@ -23,40 +35,31 @@ func installHelp(root *cobra.Command) {
 		} else {
 			b.WriteString(c.Short)
 		}
-		b.WriteString("\n\n用法：")
-		switch {
-		case c.HasAvailableSubCommands():
+		b.WriteString("\n\n")
+
+		b.WriteString("用法：\n")
+		if c.HasAvailableSubCommands() {
+			path := c.CommandPath()
 			if c.Parent() == nil {
-				b.WriteString("chaoslab [命令]")
-			} else {
-				b.WriteString(c.CommandPath() + " [命令]")
+				path = c.Name()
 			}
-		default:
-			b.WriteString(strings.TrimSuffix(c.UseLine(), " [flags]"))
-		}
-		b.WriteString("\n")
-
-		var subs []*cobra.Command
-		for _, sub := range c.Commands() {
-			if sub.IsAvailableCommand() && sub.Name() != "help" {
-				subs = append(subs, sub)
-			}
-		}
-		sort.Slice(subs, func(i, j int) bool { return subs[i].Name() < subs[j].Name() })
-		if len(subs) > 0 {
-			b.WriteString("\n可用命令：\n")
-			for _, sub := range subs {
-				b.WriteString("  " + pad(sub.Name(), 12) + sub.Short + "\n")
-			}
+			b.WriteString("  " + path + " <命令> [flags]\n")
+		} else {
+			b.WriteString("  " + strings.TrimSuffix(c.UseLine(), " [flags]") + " [flags]\n")
 		}
 
+		b.WriteString(renderCommands(c))
 		if local := c.LocalFlags(); local.HasAvailableFlags() {
 			b.WriteString("\n选项：\n")
-			b.WriteString(flagLines(local, false))
+			b.WriteString(flagLines(local))
 		}
 		if inherited := c.InheritedFlags(); inherited.HasAvailableFlags() {
 			b.WriteString("\n全局选项：\n")
-			b.WriteString(flagLines(inherited, true))
+			b.WriteString(flagLines(inherited))
+		}
+
+		if c.HasAvailableSubCommands() {
+			b.WriteString("\n用 \"chaoslab <命令> --help\" 查看某个命令的详细说明。\n")
 		}
 
 		return strings.TrimRight(b.String(), "\n") + "\n"
@@ -69,24 +72,90 @@ func installHelp(root *cobra.Command) {
 	})
 }
 
-// flagLines renders a flag set as "  <flag>   <usage>" with the descriptions
-// aligned on the terminal column, not the byte count.
-func flagLines(fs *pflag.FlagSet, withDefault bool) string {
+// renderCommands prints each group's commands, aligning names on the widest one
+// across all groups so the list reads as a single table.
+func renderCommands(c *cobra.Command) string {
+	available := map[string]*cobra.Command{}
+	var rest []*cobra.Command
+	for _, sub := range c.Commands() {
+		if !sub.IsAvailableCommand() || sub.Name() == "help" {
+			continue
+		}
+		available[sub.Name()] = sub
+	}
+	grouped := map[string]bool{}
+	for _, g := range groups {
+		for _, n := range g.names {
+			if _, ok := available[n]; ok {
+				grouped[n] = true
+			}
+		}
+	}
+	for _, sub := range available {
+		if !grouped[sub.Name()] {
+			rest = append(rest, sub)
+		}
+	}
+	sort.Slice(rest, func(i, j int) bool { return rest[i].Name() < rest[j].Name() })
+
+	width := 0
+	for _, sub := range available {
+		if w := displayWidth(sub.Name()); w > width {
+			width = w
+		}
+	}
+
+	var b strings.Builder
+	writeGroup := func(title string, subs []*cobra.Command) {
+		if len(subs) == 0 {
+			return
+		}
+		b.WriteString("\n" + title + "：\n")
+		for _, sub := range subs {
+			b.WriteString("  " + pad(sub.Name(), width+2) + sub.Short + "\n")
+		}
+	}
+
+	for _, g := range groups {
+		var subs []*cobra.Command
+		for _, n := range g.names {
+			if sub, ok := available[n]; ok {
+				subs = append(subs, sub)
+			}
+		}
+		writeGroup(g.title, subs)
+	}
+	// Grouping is for the root command. A subcommand's subcommands are one flat
+	// list; calling them "其他命令" would be nonsense.
+	if c.Parent() == nil {
+		writeGroup("其他", rest)
+	} else {
+		writeGroup("命令", rest)
+	}
+	return b.String()
+}
+
+// flagLines renders a flag set with the descriptions aligned on the terminal
+// column. Flags without a shorthand are indented so every "--" starts in the
+// same place, which is the convention users expect.
+func flagLines(fs *pflag.FlagSet) string {
 	type row struct{ flag, usage string }
 	var rows []row
 	fs.VisitAll(func(f *pflag.Flag) {
 		if f.Hidden {
 			return
 		}
-		name := "    --" + f.Name
+		var name string
 		if f.Shorthand != "" {
 			name = "  -" + f.Shorthand + ", --" + f.Name
+		} else {
+			name = "      --" + f.Name
 		}
 		switch f.Value.Type() {
-		case "string":
-			name += " <值>"
-		case "strings", "stringArray", "stringSlice", "stringToString":
-			name += " <值>"
+		case "string", "strings", "stringArray", "stringSlice", "stringToString", "int", "bool":
+			// These are documented in their own usage strings; appending a type
+			// placeholder would duplicate the convention for --json style flags.
+			name += ""
 		}
 		usage := f.Usage
 		if strings.HasPrefix(usage, "help for ") {
@@ -109,7 +178,6 @@ func flagLines(fs *pflag.FlagSet, withDefault bool) string {
 		b.WriteString(strings.Repeat(" ", width-displayWidth(r.flag)+2))
 		b.WriteString(r.usage + "\n")
 	}
-	_ = withDefault
 	return b.String()
 }
 
