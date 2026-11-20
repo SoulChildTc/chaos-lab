@@ -10,9 +10,9 @@ import (
 
 // ListEntry is one row of `list`: a fault a plugin can inject.
 type ListEntry struct {
-	Plugin   string `json:"plugin"`
-	Fault    string `json:"fault"`
-	Title    string `json:"title"`
+	Plugin string `json:"plugin"`
+	Fault  string `json:"fault"`
+	Title  string `json:"title"`
 }
 
 // RunList prints every scenario every installed plugin provides. A filter limits
