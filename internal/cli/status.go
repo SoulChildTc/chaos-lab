@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"text/tabwriter"
@@ -57,5 +56,3 @@ func RunStatus(ctx context.Context, rt *Runtime, ref string, asJSON bool) (int, 
 	}
 	return ExitOK, w.Flush()
 }
-
-var _ = json.Marshal

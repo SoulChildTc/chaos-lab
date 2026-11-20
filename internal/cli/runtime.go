@@ -49,12 +49,29 @@ func NewRuntimeDefault() (*Runtime, error) {
 	return NewRuntime(h), nil
 }
 
+// pluginDir resolves an installed plugin's directory, rejecting names that could
+// escape ~/.lab/plugins (a user-supplied name is joined into a path).
+func (rt *Runtime) pluginDir(name string) (string, error) {
+	if !pluginNameRe.MatchString(name) {
+		return "", fmt.Errorf("%w: %q 不是合法的插件名", plugin.ErrUserInput, name)
+	}
+	dir := filepath.Join(rt.PluginsDir, name)
+	if _, err := os.Stat(filepath.Join(dir, "plugin")); err != nil {
+		return "", fmt.Errorf("%w: 插件 %s 未安装（chaoslab plugin install）", plugin.ErrUserInput, name)
+	}
+	return dir, nil
+}
+
 // Lister returns the protocol client for one installed plugin.
 func (rt *Runtime) Lister(name string) *plugin.Lister {
 	return &plugin.Lister{PluginDir: filepath.Join(rt.PluginsDir, name)}
 }
 
 var slugRe = regexp.MustCompile(`[^a-z0-9]+`)
+
+// pluginNameRe matches the protocol's plugin-name rule; state and filesystem
+// paths are derived from it, so it is enforced on input, not only in the plugin.
+var pluginNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
 // Slug builds the identifier the plugin uses to name its resources. It must
 // satisfy common resource naming rules (lowercase alnum and hyphen).
@@ -133,11 +150,6 @@ func pluginEnv(pluginName, pluginDir, instance, caseName string) []string {
 		"LAB_PLUGIN_DIR=" + pluginDir,
 		"LAB_CASE=" + caseName,
 	}
-}
-
-func writeRunDir(rt *Runtime) (string, error) {
-	dir := filepath.Join(rt.Home, "runs")
-	return dir, os.MkdirAll(dir, 0o755)
 }
 
 // reload re-reads one instance so a record written right after a store update

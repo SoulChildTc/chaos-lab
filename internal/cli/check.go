@@ -76,7 +76,7 @@ func RunCheck(ctx context.Context, rt *Runtime, ref string, watch bool, asJSON b
 			if err := rt.markPassed(ctx, *inst); err != nil {
 				return ExitUserError, err
 			}
-			writeRunRecord(rt, rt.reload(ctx, *inst), runlog.ResultPassed, out.Report, nil)
+			writeRunRecord(rt, rt.reload(ctx, *inst), runlog.ResultPassed, out.Report, nil, nil)
 			if asJSON {
 				return ExitOK, printJSON(out)
 			}
@@ -97,7 +97,7 @@ func RunCheck(ctx context.Context, rt *Runtime, ref string, watch bool, asJSON b
 			return ExitNotPassed, nil
 		}
 		if time.Now().After(deadline) {
-			writeRunRecord(rt, *inst, runlog.ResultTimeout, nil, nil)
+			writeRunRecord(rt, rt.reload(ctx, *inst), runlog.ResultTimeout, nil, nil, nil)
 			return ExitNotPassed, fmt.Errorf("%s 在 %s 内仍未修好", inst.ID, window)
 		}
 		select {

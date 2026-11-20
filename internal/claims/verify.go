@@ -114,13 +114,17 @@ func verifyOne(ctx context.Context, c string) Verdict {
 		if name == "" {
 			return Verdict{Claim: c, Detail: "docker claim has no name"}
 		}
-		cmd := exec.CommandContext(ctx, "docker", "inspect", name)
-		cmd.Stdout = nil
-		cmd.Stderr = nil
-		if err := cmd.Run(); err != nil {
+		out, err := exec.CommandContext(ctx, "docker", "inspect", name).CombinedOutput()
+		if err == nil {
+			return Verdict{Claim: c, Checked: true, Released: false, Detail: "docker object still exists"}
+		}
+		// Only a definitive "no such object" means the object is gone. A dead
+		// daemon or a permission error says nothing about the object, so it must
+		// stay unchecked rather than be reported as released.
+		if isDockerMissingObject(string(out)) {
 			return Verdict{Claim: c, Checked: true, Released: true, Detail: "docker object is gone"}
 		}
-		return Verdict{Claim: c, Checked: true, Released: false, Detail: "docker object still exists"}
+		return Verdict{Claim: c, Detail: "docker 无法判定：" + firstLine(string(out))}
 	}
 	return Verdict{Claim: c, Detail: "unknown claim prefix; the plugin is responsible for this one"}
 }
@@ -141,4 +145,26 @@ func runMaybe(ctx context.Context, name string, args ...string) ([]byte, bool) {
 		return nil, false
 	}
 	return out, true
+}
+
+// isDockerMissingObject recognises the only error that means the object is
+// really gone. Anything else (daemon down, permission, bad socket) says nothing
+// about the object and must stay unchecked.
+func isDockerMissingObject(out string) bool {
+	lower := strings.ToLower(out)
+	return strings.Contains(lower, "no such object") ||
+		strings.Contains(lower, "no such container") ||
+		strings.Contains(lower, "no such volume") ||
+		strings.Contains(lower, "no such network")
+}
+
+func firstLine(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		s = s[:i]
+	}
+	if len(s) > 160 {
+		s = s[:160] + "..."
+	}
+	return s
 }

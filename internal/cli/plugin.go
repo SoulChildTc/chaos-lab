@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"github.com/soulchild/chaos-lab/internal/plugin"
-	"github.com/soulchild/chaos-lab/internal/state"
 )
 
 // RunPlugin dispatches the `plugin` subcommands. sub is one of
@@ -93,5 +92,3 @@ func RunPlugin(ctx context.Context, rt *Runtime, sub string, rest []string, asJS
 		return ExitUserError, fmt.Errorf("%w: 未知的 plugin 子命令 %q（可用：install|uninstall|info|validate）", plugin.ErrUserInput, sub)
 	}
 }
-
-var _ = state.PhaseDirty

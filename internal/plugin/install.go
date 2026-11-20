@@ -85,6 +85,11 @@ func Install(ctx context.Context, src, root string) (string, error) {
 // Uninstall removes an installed plugin. It refuses while any instance of that
 // plugin is still live, because live instances need the plugin to clean up.
 func Uninstall(root, name string, instances []state.Instance) error {
+	// name is joined into a path, so it must be a plain plugin name. Without this
+	// a name like ".." or "../../x" would delete outside root.
+	if !nameRe.MatchString(name) {
+		return fmt.Errorf("%w: %q 不是合法的插件名", ErrUserInput, name)
+	}
 	for _, in := range instances {
 		if in.Plugin == name && in.Live {
 			return fmt.Errorf("%w: %s still owns %s; run chaoslab stop first", ErrInUse, name, in.ID)

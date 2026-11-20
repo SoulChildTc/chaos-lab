@@ -31,6 +31,9 @@ type Record struct {
 	Checks         int             `json:"checks"`
 	Report         json.RawMessage `json:"report,omitempty"`
 	ClaimsReleased *bool           `json:"claims_released,omitempty"`
+	// Unverified lists claims the framework could not judge. They are not
+	// released, and not known to be held: the plugin is responsible for them.
+	Unverified []string `json:"unverified,omitempty"`
 }
 
 // Write stores r at path, creating the parent directory.
@@ -43,6 +46,20 @@ func Write(path string, r Record) error {
 		return err
 	}
 	return os.WriteFile(path, append(b, '\n'), 0o644)
+}
+
+// ExistingResult returns the result already stored at path, or "" when there is
+// no record yet. Callers use it to avoid overwriting a terminal outcome.
+func ExistingResult(path string) string {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	var r Record
+	if err := json.Unmarshal(b, &r); err != nil {
+		return ""
+	}
+	return r.Result
 }
 
 // Update rewrites an existing record. A missing record is not an error: the

@@ -19,7 +19,7 @@ func runPath(rt *Runtime, inst state.Instance) string {
 
 // writeRunRecord writes the record for an instance, or updates it when one
 // already exists (a pass is recorded first, then a later stop updates it).
-func writeRunRecord(rt *Runtime, inst state.Instance, result string, report []byte, released *bool) {
+func writeRunRecord(rt *Runtime, inst state.Instance, result string, report []byte, released *bool, unverified []string) {
 	path := inst.RunPath
 	if path == "" {
 		path = runPath(rt, inst)
@@ -37,6 +37,7 @@ func writeRunRecord(rt *Runtime, inst state.Instance, result string, report []by
 			if released != nil {
 				r.ClaimsReleased = released
 			}
+			r.Unverified = unverified
 		})
 		return
 	}
@@ -53,10 +54,6 @@ func writeRunRecord(rt *Runtime, inst state.Instance, result string, report []by
 		Checks:         inst.Checks,
 		Report:         report,
 		ClaimsReleased: released,
+		Unverified:     unverified,
 	})
-}
-
-func writeRunDirEnsure(rt *Runtime) error {
-	_, err := writeRunDir(rt)
-	return err
 }

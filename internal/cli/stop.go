@@ -13,14 +13,15 @@ import (
 )
 
 // StopOutput is the JSON shape of `stop --json`: what the plugin claimed to
-// release, and what the framework measured afterwards.
+// release, what the framework measured afterwards, and why it failed.
 type StopOutput struct {
-	Instance       string           `json:"instance"`
-	Live           bool             `json:"live"`
-	Released       bool             `json:"released"`
-	Phase          string           `json:"phase"`
-	ClaimsReleased *bool            `json:"claims_released,omitempty"`
-	Verdicts       []claims.Verdict `json:"verdicts"`
+	Instance   string           `json:"instance"`
+	Live       bool             `json:"live"`
+	Released   bool             `json:"released"`
+	Phase      string           `json:"phase"`
+	Message    string           `json:"message,omitempty"`
+	Verdicts   []claims.Verdict `json:"verdicts"`
+	Unverified []string         `json:"unverified,omitempty"`
 }
 
 // RunStop asks the plugin to tear the environment down, then measures the
@@ -37,13 +38,13 @@ func RunStop(ctx context.Context, rt *Runtime, ref string, asJSON bool) (int, er
 		return ExitUserError, err
 	}
 
-	pluginDir := rt.Lister(inst.Plugin).PluginDir
-	timeout := defaultUpTimeout
-	if cases, err := rt.Lister(inst.Plugin).List(ctx, inst.Slug, inst.Args); err == nil {
-		if c, ok := findCase(cases, inst.Case); ok {
-			timeout = parseTimeout(c.UpTimeout, defaultUpTimeout)
-		}
+	pluginDir, err := rt.pluginDir(inst.Plugin)
+	if err != nil {
+		return ExitUserError, err
 	}
+	lister := &plugin.Lister{PluginDir: pluginDir}
+	timeout := parseTimeout(caseTimeout(ctx, lister, inst.Case, inst.Args, true), defaultUpTimeout)
+
 	downCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -61,19 +62,29 @@ func RunStop(ctx context.Context, rt *Runtime, ref string, asJSON bool) (int, er
 	}
 
 	// Measure even when down failed: the user needs to know what is still there,
-	// not just that the plugin errored. Unverifiable claims (unknown prefix) are
-	// the plugin's responsibility and do not make the instance dirty.
+	// not just that the plugin errored.
 	verdicts := claims.Verify(ctx, inst.Claims)
 	residuals := claims.Residuals(verdicts)
 	unchecked := claims.Unchecked(verdicts)
 	clean := pluginMsg == "" && len(residuals) == 0
 
-	released := clean
+	// claims_released is only true when every claim was actually judged and found
+	// gone. An unverifiable claim leaves it false: "clean" would be a guess.
+	var released *bool
+	allJudged := len(unchecked) == 0
+	if clean && allJudged {
+		t := true
+		released = &t
+	} else {
+		f := false
+		released = &f
+	}
+
 	var msg string
 	switch {
-	case !clean && pluginMsg != "":
+	case pluginMsg != "":
 		msg = pluginMsg
-	case !clean:
+	case len(residuals) > 0:
 		parts := make([]string, 0, len(residuals))
 		for _, v := range residuals {
 			parts = append(parts, fmt.Sprintf("%s（%s）", v.Claim, v.Detail))
@@ -84,7 +95,12 @@ func RunStop(ctx context.Context, rt *Runtime, ref string, asJSON bool) (int, er
 		for _, v := range unchecked {
 			parts = append(parts, v.Claim)
 		}
-		msg = "以下 claim 框架无法复查，由插件负责：" + strings.Join(parts, ", ")
+		msg = "以下 claim 框架无法复查，由插件保证已释放：" + strings.Join(parts, ", ")
+	}
+
+	unverified := make([]string, 0, len(unchecked))
+	for _, v := range unchecked {
+		unverified = append(unverified, v.Claim)
 	}
 
 	phase := state.PhaseStopped
@@ -100,6 +116,10 @@ func RunStop(ctx context.Context, rt *Runtime, ref string, asJSON bool) (int, er
 			st.Instances[i].PID = 0
 			if clean {
 				st.Instances[i].Phase = state.PhaseStopped
+				if len(unverified) > 0 {
+					m := msg
+					st.Instances[i].Error = &m
+				}
 			} else {
 				st.Instances[i].Phase = state.PhaseDirty
 				m := msg
@@ -111,55 +131,41 @@ func RunStop(ctx context.Context, rt *Runtime, ref string, asJSON bool) (int, er
 		}
 		return nil
 	}); err != nil {
-		return ExitUserError, err
+		return ExitPluginErr, fmt.Errorf("%s 清理结果写入失败：%w", inst.ID, err)
 	}
 
+	reloaded := rt.reload(ctx, *inst)
 	if clean {
-		writeRunRecord(rt, rt.reload(ctx, *inst), resultOnStop(*inst), nil, &released)
+		writeRunRecord(rt, reloaded, resultOnStop(rt, reloaded), nil, released, unverified)
 	} else {
-		writeRunRecord(rt, rt.reload(ctx, *inst), runlog.ResultDirty, nil, &released)
+		writeRunRecord(rt, reloaded, runlog.ResultDirty, nil, released, unverified)
 	}
 
 	out := StopOutput{
-		Instance:       inst.ID,
-		Live:           !clean,
-		Released:       released,
-		Phase:          string(phase),
-		ClaimsReleased: &released,
-		Verdicts:       verdicts,
-	}
-	if asJSON {
-		code := ExitOK
-		if !clean {
-			code = ExitPluginErr
-		}
-		return code, printJSON(out)
+		Instance:   inst.ID,
+		Live:       !clean,
+		Released:   clean && allJudged,
+		Phase:      string(phase),
+		Message:    msg,
+		Verdicts:   verdicts,
+		Unverified: unverified,
 	}
 
 	if !clean {
-		if err := rt.Store.Update(ctx, func(st *state.File) error {
-			for i := range st.Instances {
-				if st.Instances[i].ID == inst.ID {
-					m := msg
-					st.Instances[i].Error = &m
-				}
-			}
-			return nil
-		}); err != nil {
-			return ExitUserError, err
+		if asJSON {
+			return ExitPluginErr, printJSON(out)
 		}
 		fmt.Printf("%s 未清理干净：%s\n", inst.ID, msg)
 		fmt.Printf("排查后可重试：chaoslab stop %s\n", inst.ID)
 		return ExitPluginErr, fmt.Errorf("%s 未清理干净：%s", inst.ID, msg)
 	}
 
+	if asJSON {
+		return ExitOK, printJSON(out)
+	}
 	fmt.Printf("%s 已清理\n", inst.ID)
-	if len(unchecked) > 0 {
-		parts := make([]string, 0, len(unchecked))
-		for _, v := range unchecked {
-			parts = append(parts, v.Claim)
-		}
-		fmt.Printf("注意：以下 claim 框架未复查，由插件保证：%s\n", strings.Join(parts, ", "))
+	if len(unverified) > 0 {
+		fmt.Printf("注意：以下 claim 框架未复查，由插件保证：%s\n", strings.Join(unverified, ", "))
 	}
 	return ExitOK, nil
 }
@@ -194,12 +200,19 @@ func RunStopAll(ctx context.Context, rt *Runtime) (int, error) {
 	return worst, firstErr
 }
 
-// resultOnStop picks the result for a clean stop: a record that already exists
-// keeps its outcome (passed stays passed), and an instance that never passed is
-// recorded as abandoned so an evaluation harness has a denominator.
-func resultOnStop(inst state.Instance) string {
+// resultOnStop picks the result for a clean stop. A record that already has a
+// terminal outcome keeps it: a failed start stays start_failed and a watch
+// timeout stays timeout. Only an instance that never reached a verdict becomes
+// abandoned, so an evaluation harness still gets a denominator.
+func resultOnStop(rt *Runtime, inst state.Instance) string {
 	if inst.Phase == state.PhasePassed {
 		return ""
+	}
+	if inst.RunPath != "" {
+		switch runlog.ExistingResult(inst.RunPath) {
+		case runlog.ResultStartFailed, runlog.ResultTimeout, runlog.ResultDirty, runlog.ResultPassed:
+			return ""
+		}
 	}
 	return runlog.ResultAbandoned
 }

@@ -18,18 +18,24 @@ import (
 const defaultUpTimeout = 5 * time.Minute
 
 // RunStart creates one instance of a case: resolve the plugin, merge args,
-// allocate a sequence number, ask the plugin which resources it will claim,
+// reserve a sequence number, ask the plugin which resources it will claim,
 // reject conflicts, then let the plugin bring the environment up.
+//
+// The reservation, the claim query and the conflict check all happen inside one
+// lock section. They cannot be split: a claim is only known after the plugin
+// answers list, and another start must not slip in between reserving and
+// claiming, or two instances would both hold the same port.
 func RunStart(ctx context.Context, rt *Runtime, ref string, kv map[string]string, asJSON bool) (int, error) {
 	pluginName, caseName, err := splitRef(ref)
 	if err != nil {
 		return ExitUserError, err
 	}
 
-	lister := rt.Lister(pluginName)
-	if _, statErr := os.Stat(lister.PluginDir + "/plugin"); statErr != nil {
-		return ExitUserError, fmt.Errorf("%w: 插件 %s 未安装（chaoslab plugin install）", plugin.ErrUserInput, pluginName)
+	pluginDir, err := rt.pluginDir(pluginName)
+	if err != nil {
+		return ExitUserError, err
 	}
+	lister := &plugin.Lister{PluginDir: pluginDir}
 	schema, err := lister.Schema(ctx)
 	if err != nil {
 		return ExitPluginErr, err
@@ -39,110 +45,104 @@ func RunStart(ctx context.Context, rt *Runtime, ref string, kv map[string]string
 		return ExitUserError, err
 	}
 
-	// The plugin decides what this case will hold. It needs the instance slug to
-	// do that, so the sequence number is allocated first.
 	var inst state.Instance
+	var conflict error
 	err = rt.Store.Update(ctx, func(f *state.File) error {
 		Converge(f)
 
 		for _, existing := range f.Instances {
 			if existing.Live && existing.Plugin == pluginName && existing.Case == caseName {
-				return fmt.Errorf("%w: %s is already running as %s（已运行 %s）；先 chaoslab stop %s",
+				return fmt.Errorf("%w: %s 正在运行（实例 %s，已运行 %s）；先 chaoslab stop %s",
 					plugin.ErrUserInput, ref, existing.ID, shortDuration(time.Since(existing.StartedAt)), existing.ID)
 			}
 		}
 
 		seq := f.Seq[pluginName+"/"+caseName] + 1
 		slug := Slug(pluginName, caseName, seq)
+
+		// The plugin renders claims for this exact instance and args. Unknown
+		// prefixes are compared too, so the check stays honest even for claims
+		// the framework cannot verify itself.
+		cases, listErr := lister.List(ctx, slug, args)
+		if listErr != nil {
+			return listErr
+		}
+		theCase, found := findCase(cases, caseName)
+		if !found {
+			return fmt.Errorf("%w: 插件 %s 没有场景 %q", plugin.ErrUserInput, pluginName, caseName)
+		}
+		if id, claim, clash := claims.ConflictsWith(theCase.Claims, f.Instances); clash {
+			conflict = fmt.Errorf("%w: %s 已经占用 %s", plugin.ErrUserInput, id, claim)
+			return conflict
+		}
+
 		inst = state.Instance{
 			ID:        fmt.Sprintf("%s/%s#%d", pluginName, caseName, seq),
 			Plugin:    pluginName,
 			Case:      caseName,
 			Slug:      slug,
 			Args:      args,
+			Claims:    theCase.Claims,
 			Phase:     state.PhaseStarting,
 			Live:      true,
 			PID:       os.Getpid(),
 			StartedAt: time.Now().UTC(),
 		}
+		inst.RunPath = runPath(rt, inst)
 		f.Seq[pluginName+"/"+caseName] = seq
 		f.Instances = append(f.Instances, inst)
 		return nil
 	})
 	if err != nil {
-		return ExitUserError, err
+		return codeForStartError(err), err
 	}
 
-	// Claims are only known once the slug exists. A conflict rolls the record back
-	// so a refused start leaves no trace.
-	cases, err := lister.List(ctx, inst.Slug, args)
-	if err != nil {
-		rt.dropInstance(ctx, inst.ID)
-		return ExitPluginErr, err
-	}
-	theCase, ok := findCase(cases, caseName)
-	if !ok {
-		rt.dropInstance(ctx, inst.ID)
-		return ExitUserError, fmt.Errorf("%w: plugin %s has no case %q", plugin.ErrUserInput, pluginName, caseName)
-	}
-	if id, claim, found := claims.ConflictsWith(theCase.Claims, mustRead(ctx, rt)); found {
-		rt.dropInstance(ctx, inst.ID)
-		return ExitUserError, fmt.Errorf("%w: %s already holds %s", plugin.ErrUserInput, id, claim)
-	}
-
-	if err := rt.Store.Update(ctx, func(f *state.File) error {
-		for i := range f.Instances {
-			if f.Instances[i].ID == inst.ID {
-				f.Instances[i].Claims = theCase.Claims
-				f.Instances[i].RunPath = runPath(rt, inst)
-			}
-		}
-		return nil
-	}); err != nil {
-		rt.dropInstance(ctx, inst.ID)
-		return ExitUserError, err
-	}
-	inst.Claims = theCase.Claims
-
-	timeout := parseTimeout(theCase.UpTimeout, defaultUpTimeout)
+	timeout := parseTimeout(caseTimeout(ctx, lister, caseName, args, true), defaultUpTimeout)
 	upCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	pluginDir := rt.Lister(pluginName).PluginDir
 	_, code, runErr := pluginCall(upCtx, pluginDir, inst, "up")
 	if runErr != nil || code != 0 {
 		msg := describeFailure(runErr, code)
-		code := ExitPluginErr
-		if errors.Is(runErr, context.DeadlineExceeded) || errors.Is(runErr, plugin.ErrTimeout) {
-			msg = fmt.Sprintf("环境启动超过 %s 被终止", timeout)
+		if runErr != nil {
+			msg = runErr.Error()
 		}
-		_ = rt.Store.Update(ctx, func(f *state.File) error {
+		stateErr := rt.Store.Update(ctx, func(f *state.File) error {
 			for i := range f.Instances {
-				if f.Instances[i].ID == inst.ID {
-					f.Instances[i].Phase = state.PhaseStopped
-					f.Instances[i].Live = true
-					f.Instances[i].PID = 0
-					f.Instances[i].Error = &msg
+				if f.Instances[i].ID != inst.ID {
+					continue
 				}
+				f.Instances[i].Phase = state.PhaseStopped
+				// up may have created resources before failing, so the instance
+				// keeps owning them until a stop proves otherwise.
+				f.Instances[i].Live = true
+				f.Instances[i].PID = 0
+				f.Instances[i].Error = &msg
 			}
 			return nil
 		})
-		writeRunRecord(rt, inst, runlog.ResultStartFailed, nil, nil)
-		return code, fmt.Errorf("%s 启动失败：%s", inst.ID, msg)
+		writeRunRecord(rt, rt.reload(ctx, inst), runlog.ResultStartFailed, nil, nil, nil)
+		if stateErr != nil {
+			return ExitPluginErr, fmt.Errorf("%s 启动失败：%s（且状态写入失败：%v）", inst.ID, msg, stateErr)
+		}
+		return ExitPluginErr, fmt.Errorf("%s 启动失败：%s", inst.ID, msg)
 	}
 
 	if err := rt.Store.Update(ctx, func(f *state.File) error {
 		for i := range f.Instances {
-			if f.Instances[i].ID == inst.ID {
-				f.Instances[i].Phase = state.PhaseRunning
-				f.Instances[i].PID = 0
+			if f.Instances[i].ID != inst.ID {
+				continue
 			}
+			f.Instances[i].Phase = state.PhaseRunning
+			f.Instances[i].PID = 0
 		}
 		return nil
 	}); err != nil {
-		return ExitUserError, err
+		// The environment is up but unrecorded; say so instead of pretending.
+		return ExitPluginErr, fmt.Errorf("%s 环境已启动，但状态写入失败：%w", inst.ID, err)
 	}
 
+	inst.Phase = state.PhaseRunning
 	if asJSON {
 		return ExitOK, printJSON(struct {
 			Instance string `json:"instance"`
@@ -155,25 +155,17 @@ func RunStart(ctx context.Context, rt *Runtime, ref string, kv map[string]string
 	return ExitOK, nil
 }
 
-func (rt *Runtime) dropInstance(ctx context.Context, id string) {
-	_ = rt.Store.Update(ctx, func(f *state.File) error {
-		out := f.Instances[:0]
-		for _, in := range f.Instances {
-			if in.ID != id {
-				out = append(out, in)
-			}
-		}
-		f.Instances = out
-		return nil
-	})
-}
-
-func mustRead(ctx context.Context, rt *Runtime) []state.Instance {
-	f, err := rt.Store.Read(ctx)
-	if err != nil {
-		return nil
+// codeForStartError separates a refused start (user can fix it) from a plugin
+// that failed to answer the protocol.
+func codeForStartError(err error) int {
+	switch {
+	case errors.Is(err, plugin.ErrUserInput):
+		return ExitUserError
+	case errors.Is(err, plugin.ErrProtocol):
+		return ExitPluginErr
+	default:
+		return ExitPluginErr
 	}
-	return f.Instances
 }
 
 func findCase(cases []plugin.Case, id string) (plugin.Case, bool) {
@@ -196,11 +188,28 @@ func parseTimeout(s string, fallback time.Duration) time.Duration {
 	return d
 }
 
+// caseTimeout asks the plugin for this case's timeout. Failures fall back to the
+// default rather than blocking an action the user already asked for.
+func caseTimeout(ctx context.Context, lister *plugin.Lister, caseName string, args map[string]any, up bool) string {
+	cases, err := lister.List(ctx, "", args)
+	if err != nil {
+		return ""
+	}
+	c, ok := findCase(cases, caseName)
+	if !ok {
+		return ""
+	}
+	if up {
+		return c.UpTimeout
+	}
+	return c.CheckTimeout
+}
+
 func describeFailure(err error, code int) string {
 	if err != nil {
 		return err.Error()
 	}
-	return "plugin exited with code " + strconv.Itoa(code)
+	return "插件退出码 " + strconv.Itoa(code)
 }
 
 func printJSON(v any) error {

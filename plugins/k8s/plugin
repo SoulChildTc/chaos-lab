@@ -46,7 +46,9 @@ case_title() {
 claims_for() {
   # Reusing an external cluster means owning a namespace, not a cluster.
   if [ -n "${KUBECONFIG_EXTERNAL:-}" ]; then
-    echo "\"kube:$(kubectl config current-context 2>/dev/null || echo external)/lab-$instance\""
+    # The context must come from the user-supplied kubeconfig, not the ambient
+    # one, or two instances could land in the same cluster and never conflict.
+    echo "\"kube:$(KUBECONFIG="$KUBECONFIG_EXTERNAL" kubectl config current-context 2>/dev/null || echo external)/lab-$instance\""
   else
     echo "\"kind:lab-$instance\""
   fi
@@ -99,6 +101,10 @@ JSON
 
   down)
     [ -n "$instance" ] || { echo "k8s: 缺少 --instance" >&2; exit 2; }
+    case " ${CASE_IDS[*]} " in
+      *" ${case_id:-x} "*) ;;
+      *) echo "k8s: 未知场景 ${case_id:-<空>}" >&2; exit 2 ;;
+    esac
     export KUBECONFIG_EXTERNAL
     KUBECONFIG_EXTERNAL="$(json_str kubeconfig)"
     export K8S_NAMESPACE="lab-$instance"
@@ -107,6 +113,10 @@ JSON
 
   check)
     [ -n "$instance" ] || { echo "k8s: 缺少 --instance" >&2; exit 2; }
+    case " ${CASE_IDS[*]} " in
+      *" ${case_id:-x} "*) ;;
+      *) echo "k8s: 未知场景 ${case_id:-<空>}" >&2; exit 2 ;;
+    esac
     export KUBECONFIG_EXTERNAL
     KUBECONFIG_EXTERNAL="$(json_str kubeconfig)"
     export K8S_NAMESPACE="lab-$instance"
