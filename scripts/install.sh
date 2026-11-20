@@ -88,11 +88,21 @@ case "$arch" in
 esac
 
 asset="chaoslab_${os}_${arch}.tar.gz"
+
+# GitHub's "latest" skips prereleases, so during the beta a releases/latest URL
+# resolves to nothing. Ask the API for the newest release instead, including
+# prereleases. If that fails (rate limit, no curl), fall back to the plain URL.
 if [ "$version" = latest ]; then
-  base="https://github.com/${repo}/releases/latest/download"
-else
-  base="https://github.com/${repo}/releases/download/${version}"
+  tag=$(curl -fsSL "https://api.github.com/repos/${repo}/releases" 2>/dev/null \
+        | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1 || true)
+  if [ -n "$tag" ]; then
+    version="$tag"
+    say "最新版本：${version}"
+  else
+    base="https://github.com/${repo}/releases/latest/download"
+  fi
 fi
+[ -n "${base:-}" ] || base="https://github.com/${repo}/releases/download/${version}"
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT

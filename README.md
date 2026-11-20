@@ -61,21 +61,23 @@ CLUES
 支持 macOS 和 Linux 的 amd64 / arm64。
 
 ```bash
+# install and upgrade
 curl -fsSL https://raw.githubusercontent.com/SoulChildTc/chaos-lab/main/scripts/install.sh | sh
 ```
 
-脚本会识别系统与架构、下载对应包、校验 `SHA256SUMS`，把 `chaoslab` 装到 `/usr/local/bin`（不可写时退到 `~/.local/bin`），插件解压到 `~/.local/share/chaoslab/plugins`，装完打印下一步该敲什么。
+1. 脚本会识别系统与架构
+2. 下载对应包、校验 `SHA256SUMS`，
+3. 把 `chaoslab` 装到 `/usr/local/bin`（不可写时退到 `~/.local/bin`）
+4. 插件解压到 `~/.local/share/chaoslab/plugins`。
 
-再跑一次同一条命令就是**升级**，会打印新旧版本。
-
-想装指定版本或换位置，覆盖环境变量：
+自定义版本或更换安装位置：
 
 ```bash
 CHAOSLAB_VERSION=v0.1.0 CHAOSLAB_INSTALL_DIR=~/bin sh -c \
   'curl -fsSL https://raw.githubusercontent.com/SoulChildTc/chaos-lab/main/scripts/install.sh | sh'
 ```
 
-**卸载**会删掉二进制、解压出来的插件和 `~/.lab`（状态与运行记录）。有存活实例时会拒绝，先 `chaoslab stop --all`：
+**卸载**会删掉二进制、解压出来的插件和 `~/.lab`（状态与运行记录）。有存活实例时会拒绝，请先 `chaoslab stop --all`：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/SoulChildTc/chaos-lab/main/scripts/install.sh | sh -s -- --uninstall
