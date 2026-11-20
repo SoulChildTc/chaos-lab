@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-
 )
 
 // ErrProtocol marks a plugin that answered but not according to the protocol.

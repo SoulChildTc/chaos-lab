@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"syscall"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 

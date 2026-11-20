@@ -108,7 +108,8 @@ func RunCheck(ctx context.Context, rt *Runtime, ref string, watch bool, asJSON b
 	}
 }
 
-func (rt *Runtime) markPassed(ctx context.Context, inst state.Instance) error {	return rt.Store.Update(ctx, func(f *state.File) error {
+func (rt *Runtime) markPassed(ctx context.Context, inst state.Instance) error {
+	return rt.Store.Update(ctx, func(f *state.File) error {
 		for i := range f.Instances {
 			if f.Instances[i].ID != inst.ID {
 				continue

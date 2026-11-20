@@ -155,7 +155,7 @@ func TestCheckJSONReportMatchesExitCode(t *testing.T) {
 		t.Fatal(err)
 	}
 	var got struct {
-		Passed bool   `json:"passed"`
+		Passed bool `json:"passed"`
 		Report struct {
 			RootCause string   `json:"root_cause"`
 			Clues     []string `json:"clues"`
