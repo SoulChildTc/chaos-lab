@@ -1,0 +1,89 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: go test ./...
+
+      - name: Plugin self-tests
+        run: |
+          bash plugins/fake/plugin_test.sh
+          bash plugins/k8s/plugin_test.sh
+
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # Asset names are stable across releases (no version in the filename) so
+      # that github.com/<repo>/releases/latest/download/<asset> always resolves.
+      # The tag is still recorded inside the binary.
+      - name: Build
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          module="github.com/soulchildtc/chaos-lab/internal/cli"
+          ldflags="-s -w -X ${module}.Version=${VERSION} -X ${module}.Commit=$(git rev-parse --short HEAD) -X ${module}.Date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+          mkdir -p dist
+          for target in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64; do
+            os="${target%/*}"
+            arch="${target#*/}"
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
+              go build -trimpath -ldflags "$ldflags" -o "chaoslab_${os}_${arch}" ./cmd/chaoslab
+          done
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          # The binary alone is not enough: `chaoslab plugin install <dir>` needs
+          # a plugin directory, and `install <git-url>` clones a repo whose plugin
+          # lives in plugins/k8s. Shipping plugins/ makes both work immediately.
+          for bin in chaoslab_*; do
+            os_arch="${bin#chaoslab_}"
+            staging="stage_${os_arch}"
+            mkdir -p "$staging/plugins"
+            mv "$bin" "$staging/chaoslab"
+            cp -R plugins/k8s plugins/fake "$staging/plugins/"
+            tar -czf "dist/chaoslab_${os_arch}.tar.gz" -C "$staging" chaoslab plugins
+            rm -rf "$staging"
+          done
+          cd dist && shasum -a 256 *.tar.gz > SHA256SUMS && ls -lh
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # Re-running a tag must not fail because the release already exists.
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            gh release upload "$VERSION" dist/*.tar.gz dist/SHA256SUMS --clobber
+          else
+            gh release create "$VERSION" \
+              --title "$VERSION" \
+              --generate-notes \
+              dist/*.tar.gz dist/SHA256SUMS
+          fi

@@ -23,6 +23,7 @@ const usage = `chaoslab — 本地故障演练实验室
   chaoslab plugin uninstall <name>
   chaoslab plugin info <name>
   chaoslab plugin validate <dir>
+  chaoslab version [--json]
 
 退出码：0 成功/通过  1 用法或冲突  2 未通过  3 插件执行出错
 `
@@ -40,6 +41,9 @@ func Run(ctx context.Context, rt *Runtime, argv []string) (int, error) {
 	case "help", "-h", "--help":
 		fmt.Print(usage)
 		return ExitOK, nil
+
+	case "version", "-v", "--version":
+		return RunVersion(asJSON)
 
 	case "list":
 		return RunList(ctx, rt, asJSON)

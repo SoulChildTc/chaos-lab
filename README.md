@@ -52,7 +52,35 @@ $ chaoslab check k8s/ingress-502
 
 ## 安装
 
-需要 Go 1.22+ 和 Docker（Docker Desktop 或 OrbStack）。框架无第三方依赖。
+### 下载二进制（推荐）
+
+从 [Releases](https://github.com/soulchildtc/chaos-lab/releases) 下载对应平台的包，解开就有 `chaoslab` 和 `plugins/`：
+
+```bash
+# macOS Apple Silicon
+curl -LO https://github.com/soulchildtc/chaos-lab/releases/latest/download/chaoslab_darwin_arm64.tar.gz
+tar -xzf chaoslab_darwin_arm64.tar.gz
+sudo mv chaoslab /usr/local/bin/
+chaoslab plugin install ./plugins/k8s
+```
+
+其他平台把文件名换掉即可：
+
+| 平台 | 文件 |
+|---|---|
+| macOS Apple Silicon | `chaoslab_darwin_arm64.tar.gz` |
+| macOS Intel | `chaoslab_darwin_amd64.tar.gz` |
+| Linux x86-64 | `chaoslab_linux_amd64.tar.gz` |
+| Linux ARM64 | `chaoslab_linux_arm64.tar.gz` |
+
+校验和在同目录的 `SHA256SUMS` 里。`chaoslab version` 会告诉你这是哪个 tag、哪个 commit 编的。
+
+> [!NOTE]
+> Windows 没有原生二进制，请在 [WSL](https://learn.microsoft.com/windows/wsl/install) 里用 Linux 版。状态文件用 `flock` 加锁，这个调用在 Windows 上不存在；WSL 里 `kind` 和 Docker 也照常可用。
+
+### 从源码构建
+
+需要 Go 1.22+，框架无第三方依赖：
 
 ```bash
 git clone https://github.com/soulchildtc/chaos-lab.git
@@ -61,7 +89,9 @@ go build -o ~/.local/bin/chaoslab ./cmd/chaoslab
 chaoslab plugin install ./plugins/k8s
 ```
 
-K8s 场景还需要 `kind` 和 `kubectl`：
+### 场景依赖
+
+K8s 场景还要 `kind` 和 `kubectl`：
 
 ```bash
 brew install kind kubectl
@@ -231,7 +261,7 @@ scripts/e2e-k8s.sh     端到端验收
 
 ## 状态
 
-早期版本（2026-11），接口还在动，从 `main` 构建，没有二进制发布。MIT 许可，见 [LICENSE](LICENSE)。
+早期版本（2026-11），接口还在动。可以下预编译二进制，也可以从 `main` 构建。MIT 许可，见 [LICENSE](LICENSE)。
 
 已验证：macOS + OrbStack + kind 0.33 上五个场景依次跑通 `start → check(未修=2) → stop → 无残留`，同一场景连续三轮零残留。
 
