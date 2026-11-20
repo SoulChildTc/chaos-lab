@@ -67,21 +67,19 @@ chaoslab stop k8s/pod-pending           # 清理，并实测是否真的清干�
 
 退出码：`0` 成功/通过，`1` 用法或冲突，`2` 未通过，`3` 插件执行出错。
 
-## 自带场景
+## 自带插件
 
-`plugins/k8s`，五个，每个实例一个临时 kind 集群，停掉就删，不碰你本机任何东西：
+| 插件 | 说明 | 文档 |
+|---|---|---|
+| `k8s` | 五个 Kubernetes 故障场景，每个实例一套一次性 kind 集群 | [plugins/k8s/README.md](plugins/k8s/README.md) |
+| `fake` | 零依赖测试替身，验证框架行为，也是写插件的参考实现 | [plugins/fake/README.md](plugins/fake/README.md) |
 
-| 场景 | 现象 |
-|---|---|
-| `k8s/ingress-502` | 访问站点返回 502 |
-| `k8s/pod-pending` | Pod 一直 Pending |
-| `k8s/image-pull-backoff` | Pod 卡在 ImagePullBackOff |
-| `k8s/svc-selector-mismatch` | Service 没有 endpoints，访问超时 |
-| `k8s/pvc-unbound` | PVC 一直 Pending |
+```bash
+chaoslab plugin install ./plugins/k8s
+chaoslab list          # 这时会列出 5 个 K8s 场景
+```
 
-`--kubeconfig` 参数可以让它复用你已有的集群（只建一个 namespace，`stop` 只删那个 namespace）。
-
-`plugins/fake` 是零依赖的测试替身，用来验证框架行为（冲突检测、`dirty` 状态），也是写插件的例子。
+K8s 插件需要 `kind` 和 `kubectl`（插件自己检查并给安装提示）。每个场景的现象、埋的坑、进环境的方式、参数、清理行为，都写在那个插件的 README 里。
 
 ## 并行跑
 
@@ -118,7 +116,10 @@ chaoslab check k8s/ingress-502 --json        # {"passed":true,"report":{...}}
 
 插件是任何语言写的一个可执行文件，框架对它内部零假设。MySQL、Redis、ES、Mongo 都可以这么做。
 
-协议文档：**[docs/plugin-protocol.md](docs/plugin-protocol.md)** —— 只读这一份就能写出插件，含两份骨架代码和三个常见错误。
+- **协议文档**：[docs/plugin-protocol.md](docs/plugin-protocol.md) —— 子命令、执行环境、claims、两份骨架代码、三个常见错误
+- **参考实现**：[plugins/fake](plugins/fake/README.md)（零依赖最小例子）、[plugins/k8s](plugins/k8s/README.md)（真实场景）
+
+每个插件自带 README，讲它自己的场景、参数和清理行为。
 
 ## V1 边界
 
@@ -137,8 +138,8 @@ internal/plugin/       插件协议：子进程调用、schema/list 解析、安
 internal/state/        实例状态，文件锁 + 原子写
 internal/claims/       冲突检测与残留实测
 internal/runlog/       run 记录
-plugins/k8s/           K8s 插件（bash + kind）
-plugins/fake/          测试替身插件
+plugins/k8s/           K8s 插件（bash + kind），自带 README
+plugins/fake/          测试替身插件，自带 README
 docs/                  设计文档、实施计划、插件协议
 scripts/e2e-k8s.sh     五个 K8s 场景的端到端验收
 ```
