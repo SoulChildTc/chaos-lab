@@ -29,6 +29,36 @@ chaoslab list
 
 每个场景都验证过：未修复时 `check` 退出 2，修复后退出 0 并给出根因。
 
+> [!NOTE]
+> `pvc-unbound` 的 PVC 创建后 `storageClassName` 不可改（API 会拒绝 `spec is immutable`）。正确的修法是补一个 `fast-ssd` StorageClass，而不是改 PVC：
+>
+> ```bash
+> kubectl apply -f - <<'EOF'
+> apiVersion: storage.k8s.io/v1
+> kind: StorageClass
+> metadata:
+>   name: fast-ssd
+> provisioner: rancher.io/local-path
+> volumeBindingMode: WaitForFirstConsumer
+> reclaimPolicy: Delete
+> EOF
+> ```
+
+> [!NOTE]
+> `pvc-unbound` 的 PVC 创建后 `storageClassName` 不可改（API 会拒绝）。正确的修法是补一个 `fast-ssd` StorageClass，而不是改 PVC：
+>
+> ```bash
+> kubectl apply -f - <<'EOF'
+> apiVersion: storage.k8s.io/v1
+> kind: StorageClass
+> metadata:
+>   name: fast-ssd
+> provisioner: rancher.io/local-path
+> volumeBindingMode: WaitForFirstConsumer
+> reclaimPolicy: Delete
+> EOF
+> ```
+
 ## 怎么进去查
 
 `start` 之后会打印实例 slug，kubeconfig 在 `~/.lab/k8s-state/<slug>.kubeconfig`：
