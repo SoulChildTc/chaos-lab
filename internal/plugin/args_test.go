@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/soulchild/chaos-lab/internal/plugin"
+	"github.com/soulchildtc/chaos-lab/internal/plugin"
 )
 
 func TestMergeFillsDefaultsAndConverts(t *testing.T) {

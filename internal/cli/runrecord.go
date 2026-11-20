@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/soulchild/chaos-lab/internal/runlog"
-	"github.com/soulchild/chaos-lab/internal/state"
+	"github.com/soulchildtc/chaos-lab/internal/runlog"
+	"github.com/soulchildtc/chaos-lab/internal/state"
 )
 
 // runPath is where this instance's single run record lives. It is stored in the

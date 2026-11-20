@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/soulchild/chaos-lab/internal/home"
+	"github.com/soulchildtc/chaos-lab/internal/home"
 )
 
 func TestDirUsesEnvOverride(t *testing.T) {

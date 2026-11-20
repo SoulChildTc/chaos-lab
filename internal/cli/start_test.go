@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/soulchild/chaos-lab/internal/cli"
-	"github.com/soulchild/chaos-lab/internal/plugin"
-	"github.com/soulchild/chaos-lab/internal/state"
+	"github.com/soulchildtc/chaos-lab/internal/cli"
+	"github.com/soulchildtc/chaos-lab/internal/plugin"
+	"github.com/soulchildtc/chaos-lab/internal/state"
 )
 
 // newTestRuntime installs plugins/fake into a throwaway CHAOSLAB_HOME and

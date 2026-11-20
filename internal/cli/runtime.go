@@ -10,9 +10,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/soulchild/chaos-lab/internal/home"
-	"github.com/soulchild/chaos-lab/internal/plugin"
-	"github.com/soulchild/chaos-lab/internal/state"
+	"github.com/soulchildtc/chaos-lab/internal/home"
+	"github.com/soulchildtc/chaos-lab/internal/plugin"
+	"github.com/soulchildtc/chaos-lab/internal/state"
 )
 
 // Exit codes. The numbers are part of the CLI contract (see the spec).

@@ -6,7 +6,7 @@ import (
 	"net"
 	"testing"
 
-	"github.com/soulchild/chaos-lab/internal/claims"
+	"github.com/soulchildtc/chaos-lab/internal/claims"
 )
 
 func TestVerifyPortReportsListening(t *testing.T) {

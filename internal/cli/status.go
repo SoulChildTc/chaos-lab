@@ -7,8 +7,8 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/soulchild/chaos-lab/internal/plugin"
-	"github.com/soulchild/chaos-lab/internal/state"
+	"github.com/soulchildtc/chaos-lab/internal/plugin"
+	"github.com/soulchildtc/chaos-lab/internal/state"
 )
 
 // RunStatus prints live instances, converging any record orphaned by a killed

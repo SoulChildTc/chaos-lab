@@ -6,7 +6,7 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"github.com/soulchild/chaos-lab/internal/plugin"
+	"github.com/soulchildtc/chaos-lab/internal/plugin"
 )
 
 // ListEntry is one row of `list`: a case, addressed as plugin/case.

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/soulchild/chaos-lab/internal/plugin"
-	"github.com/soulchild/chaos-lab/internal/state"
+	"github.com/soulchildtc/chaos-lab/internal/plugin"
+	"github.com/soulchildtc/chaos-lab/internal/state"
 )
 
 const fakePluginBody = `#!/bin/sh

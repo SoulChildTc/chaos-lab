@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/soulchild/chaos-lab/internal/cli"
-	"github.com/soulchild/chaos-lab/internal/state"
+	"github.com/soulchildtc/chaos-lab/internal/cli"
+	"github.com/soulchildtc/chaos-lab/internal/state"
 )
 
 func TestStartRecoversOrphanedStartingRecord(t *testing.T) {

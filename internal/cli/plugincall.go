@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"os"
 
-	"github.com/soulchild/chaos-lab/internal/plugin"
-	"github.com/soulchild/chaos-lab/internal/state"
+	"github.com/soulchildtc/chaos-lab/internal/plugin"
+	"github.com/soulchildtc/chaos-lab/internal/state"
 )
 
 // pluginCall runs one lifecycle subcommand of a plugin for an instance and

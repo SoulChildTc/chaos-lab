@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/soulchild/chaos-lab/internal/state"
+	"github.com/soulchildtc/chaos-lab/internal/state"
 )
 
 func TestUpdateAllocatesSeqAndPersists(t *testing.T) {

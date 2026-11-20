@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/soulchild/chaos-lab/internal/cli"
-	"github.com/soulchild/chaos-lab/internal/runlog"
-	"github.com/soulchild/chaos-lab/internal/state"
+	"github.com/soulchildtc/chaos-lab/internal/cli"
+	"github.com/soulchildtc/chaos-lab/internal/runlog"
+	"github.com/soulchildtc/chaos-lab/internal/state"
 )
 
 // overwritePlugin replaces an installed plugin's entry so a test can simulate a

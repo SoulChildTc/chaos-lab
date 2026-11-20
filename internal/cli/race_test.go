@@ -5,8 +5,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/soulchild/chaos-lab/internal/cli"
-	"github.com/soulchild/chaos-lab/internal/state"
+	"github.com/soulchildtc/chaos-lab/internal/cli"
+	"github.com/soulchildtc/chaos-lab/internal/state"
 )
 
 // Two different cases claiming the same port must not both be admitted. The

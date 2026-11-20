@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/soulchild/chaos-lab/internal/plugin"
+	"github.com/soulchildtc/chaos-lab/internal/plugin"
 )
 
 func TestRunCapturesStdoutAndPassesStderr(t *testing.T) {

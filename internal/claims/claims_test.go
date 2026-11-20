@@ -3,8 +3,8 @@ package claims_test
 import (
 	"testing"
 
-	"github.com/soulchild/chaos-lab/internal/claims"
-	"github.com/soulchild/chaos-lab/internal/state"
+	"github.com/soulchildtc/chaos-lab/internal/claims"
+	"github.com/soulchildtc/chaos-lab/internal/state"
 )
 
 func TestConflictFindsFirstSharedClaim(t *testing.T) {

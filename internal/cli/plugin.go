@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/soulchild/chaos-lab/internal/plugin"
+	"github.com/soulchildtc/chaos-lab/internal/plugin"
 )
 
 // RunPlugin dispatches the `plugin` subcommands. sub is one of

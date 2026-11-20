@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/soulchild/chaos-lab/internal/plugin"
+	"github.com/soulchildtc/chaos-lab/internal/plugin"
 )
 
 // usage is the text printed when the command line is not actionable.

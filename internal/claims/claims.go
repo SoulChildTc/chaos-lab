@@ -6,7 +6,7 @@
 // create one) stay the plugin's business.
 package claims
 
-import "github.com/soulchild/chaos-lab/internal/state"
+import "github.com/soulchildtc/chaos-lab/internal/state"
 
 // Conflict returns the first claim present in both sets.
 func Conflict(a, b []string) (string, bool) {

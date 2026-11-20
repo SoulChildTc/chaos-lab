@@ -9,10 +9,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/soulchild/chaos-lab/internal/claims"
-	"github.com/soulchild/chaos-lab/internal/plugin"
-	"github.com/soulchild/chaos-lab/internal/runlog"
-	"github.com/soulchild/chaos-lab/internal/state"
+	"github.com/soulchildtc/chaos-lab/internal/claims"
+	"github.com/soulchildtc/chaos-lab/internal/plugin"
+	"github.com/soulchildtc/chaos-lab/internal/runlog"
+	"github.com/soulchildtc/chaos-lab/internal/state"
 )
 
 const defaultUpTimeout = 5 * time.Minute
