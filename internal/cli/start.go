@@ -150,8 +150,8 @@ func RunStart(ctx context.Context, rt *Runtime, ref string, kv map[string]string
 			Phase    string `json:"phase"`
 		}{inst.ID, inst.Slug, string(state.PhaseRunning)})
 	}
-	fmt.Printf("%s 已就绪（slug %s）\n", inst.ID, inst.Slug)
-	fmt.Printf("修好后运行：chaoslab check %s\n", inst.ID)
+	fmt.Printf("%s %s %s\n", glyphOK(), ok("已就绪"), dim(inst.ID))
+	fmt.Println(dim("  修好后运行：chaoslab check " + inst.ID))
 	return ExitOK, nil
 }
 

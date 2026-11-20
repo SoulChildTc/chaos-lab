@@ -88,10 +88,10 @@ func RunCheck(ctx context.Context, rt *Runtime, ref string, watch bool, asJSON b
 				if asJSON {
 					return ExitNotPassed, printJSON(out)
 				}
-				fmt.Printf("%s 尚未修好\n", inst.ID)
+				printNotFixed(inst.ID, out.Message)
 				return ExitNotPassed, nil
 			}
-			fmt.Fprintf(os.Stderr, "%s 尚未修好，%s 后重试\n", inst.ID, watchInterval)
+			fmt.Fprintf(os.Stderr, "%s %s 后重试\n", dim(inst.ID), dim(watchInterval.String()))
 		default:
 			// The check itself is broken: not an attempt, no record.
 			return ExitPluginErr, err
@@ -196,27 +196,4 @@ func truncate(b []byte) string {
 		return string(b)
 	}
 	return string(b[:max]) + "..."
-}
-
-// printPass hands over what the user earned: pass, root cause, then the clues
-// that would have led there fastest.
-func printPass(id string, report json.RawMessage) {
-	fmt.Printf("✓ %s 通过\n", id)
-
-	var r struct {
-		RootCause string   `json:"root_cause"`
-		Clues     []string `json:"clues"`
-	}
-	if len(report) > 0 {
-		_ = json.Unmarshal(report, &r)
-	}
-	if r.RootCause != "" {
-		fmt.Printf("\n根因\n  %s\n", r.RootCause)
-	}
-	if len(r.Clues) > 0 {
-		fmt.Println("\n关键线索")
-		for _, c := range r.Clues {
-			fmt.Printf("  - %s\n", c)
-		}
-	}
 }

@@ -29,7 +29,7 @@ func TestListUnionAcrossPlugins(t *testing.T) {
 	rt, _ := newTestRuntime(t)
 	installSecondPlugin(t, rt)
 
-	out, err := captureStdout(t, func() (int, error) { return cli.RunList(context.Background(), rt, true) })
+	out, err := captureStdout(t, func() (int, error) { return cli.RunList(context.Background(), rt, "", true) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestListUnionAcrossPlugins(t *testing.T) {
 
 func TestListEmptySaysSo(t *testing.T) {
 	rt := cli.NewRuntime(t.TempDir())
-	out, err := captureStdout(t, func() (int, error) { return cli.RunList(context.Background(), rt, false) })
+	out, err := captureStdout(t, func() (int, error) { return cli.RunList(context.Background(), rt, "", false) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestListEmptySaysSo(t *testing.T) {
 
 func TestListJSONEmptyIsArray(t *testing.T) {
 	rt := cli.NewRuntime(t.TempDir())
-	out, err := captureStdout(t, func() (int, error) { return cli.RunList(context.Background(), rt, true) })
+	out, err := captureStdout(t, func() (int, error) { return cli.RunList(context.Background(), rt, "", true) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestListReportsBrokenPluginWithoutDroppingOthers(t *testing.T) {
 	os.MkdirAll(brokenDir, 0o755)
 	os.WriteFile(filepath.Join(brokenDir, "plugin"), []byte("#!/bin/sh\nexit 1\n"), 0o755)
 
-	out, err := captureStdout(t, func() (int, error) { return cli.RunList(context.Background(), rt, true) })
+	out, err := captureStdout(t, func() (int, error) { return cli.RunList(context.Background(), rt, "", true) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestListReportsBrokenPluginWithoutDroppingOthers(t *testing.T) {
 
 func TestListHumanOutputShowsRefs(t *testing.T) {
 	rt, _ := newTestRuntime(t)
-	out, err := captureStdout(t, func() (int, error) { return cli.RunList(context.Background(), rt, false) })
+	out, err := captureStdout(t, func() (int, error) { return cli.RunList(context.Background(), rt, "", false) })
 	if err != nil {
 		t.Fatal(err)
 	}

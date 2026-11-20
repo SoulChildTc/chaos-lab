@@ -2,200 +2,300 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"os"
 	"strings"
 
-	"github.com/soulchildtc/chaos-lab/internal/plugin"
+	"github.com/spf13/cobra"
 )
 
-// usage is the text printed when the command line is not actionable.
-const usage = `chaoslab — 本地故障演练实验室
+// exitError carries a code out of a cobra RunE. Cobra has no notion of exit
+// codes, but every chaoslab command has one and scripts depend on them.
+type exitError struct {
+	code int
+	err  error
+}
 
-用法：
-  chaoslab list [--json]
-  chaoslab start <plugin>/<case> [--arg=value ...] [--json] [--help]
-  chaoslab check (<plugin>/<case> | <instance-id>) [--watch] [--json]
-  chaoslab stop|rm (<plugin>/<case> | <instance-id>) [--json]
-  chaoslab stop|rm --all
-  chaoslab status [<instance-id>] [--json]
-  chaoslab plugin install <git-url|dir>
-  chaoslab plugin uninstall <name>
-  chaoslab plugin info <name>
-  chaoslab plugin validate <dir>
-  chaoslab version [--json]
+func (e *exitError) Error() string {
+	if e.err != nil {
+		return e.err.Error()
+	}
+	return fmt.Sprintf("exit %d", e.code)
+}
 
-退出码：0 成功/通过  1 用法或冲突  2 未通过  3 插件执行出错
-`
+func (e *exitError) Unwrap() error { return e.err }
 
-// Run parses argv and dispatches one subcommand. The returned code is the
-// process exit status; err is the message to print on stderr.
+// fail returns an error that makes the process exit with code.
+func fail(code int, format string, args ...any) error {
+	return &exitError{code: code, err: fmt.Errorf(format, args...)}
+}
+
+// failWith keeps an existing error so errors.Is still works, and attaches a code.
+func failWith(code int, err error) error {
+	if err == nil {
+		err = errors.New("")
+	}
+	return &exitError{code: code, err: err}
+}
+
+// Run builds the command tree, executes it, and returns the process exit code
+// plus the message to print on stderr.
 func Run(ctx context.Context, rt *Runtime, argv []string) (int, error) {
-	args, asJSON := stripJSONFlag(argv)
-	if len(args) == 0 {
-		fmt.Print(usage)
-		return ExitOK, nil
+	root := newRoot(rt)
+	root.SetArgs(argv)
+	err := root.ExecuteContext(ctx)
+
+	var x *exitError
+	if errors.As(err, &x) {
+		if x.err == nil || x.err.Error() == "" {
+			return x.code, nil
+		}
+		return x.code, x.err
 	}
-
-	switch args[0] {
-	case "help", "-h", "--help":
-		fmt.Print(usage)
-		return ExitOK, nil
-
-	case "version", "-v", "--version":
-		return RunVersion(asJSON)
-
-	case "list":
-		return RunList(ctx, rt, asJSON)
-
-	case "status":
-		if len(args) > 2 {
-			return ExitUserError, fmt.Errorf("%w: 用法 chaoslab status [<instance-id>]", plugin.ErrUserInput)
-		}
-		ref := ""
-		if len(args) == 2 {
-			ref = args[1]
-		}
-		return RunStatus(ctx, rt, ref, asJSON)
-
-	case "start":
-		return runStartArgs(ctx, rt, args[1:], asJSON)
-
-	case "check":
-		if len(args) < 2 {
-			return ExitUserError, fmt.Errorf("%w: 用法 chaoslab check <plugin>/<case> [--watch]", plugin.ErrUserInput)
-		}
-		watch := false
-		var positional []string
-		for _, a := range args[1:] {
-			if a == "--watch" {
-				watch = true
-				continue
-			}
-			if strings.HasPrefix(a, "-") {
-				return ExitUserError, fmt.Errorf("%w: 未知选项 %q", plugin.ErrUserInput, a)
-			}
-			positional = append(positional, a)
-		}
-		if len(positional) != 1 {
-			return ExitUserError, fmt.Errorf("%w: check 需要且只能有一个实例引用", plugin.ErrUserInput)
-		}
-		return RunCheck(ctx, rt, positional[0], watch, asJSON)
-
-	case "stop", "rm":
-		all := false
-		var positional []string
-		for _, a := range args[1:] {
-			if a == "--all" {
-				all = true
-				continue
-			}
-			if strings.HasPrefix(a, "-") {
-				return ExitUserError, fmt.Errorf("%w: 未知选项 %q", plugin.ErrUserInput, a)
-			}
-			positional = append(positional, a)
-		}
-		if all {
-			if len(positional) > 0 {
-				return ExitUserError, fmt.Errorf("%w: --all 不能和实例引用一起用", plugin.ErrUserInput)
-			}
-			return RunStopAll(ctx, rt)
-		}
-		if len(positional) != 1 {
-			return ExitUserError, fmt.Errorf("%w: 用法 chaoslab stop <plugin>/<case> | --all", plugin.ErrUserInput)
-		}
-		return RunStop(ctx, rt, positional[0], asJSON)
-
-	case "plugin":
-		if len(args) < 2 {
-			return ExitUserError, fmt.Errorf("%w: 用法 chaoslab plugin <install|uninstall|info|validate>", plugin.ErrUserInput)
-		}
-		return RunPlugin(ctx, rt, args[1], args[2:], asJSON)
-
-	default:
-		return ExitUserError, fmt.Errorf("%w: 未知命令 %q\n\n%s", plugin.ErrUserInput, args[0], usage)
-	}
-}
-
-// stripJSONFlag removes --json wherever it appears. Only one global flag exists,
-// so a scan is simpler than a real flag parser.
-func stripJSONFlag(argv []string) ([]string, bool) {
-	out := make([]string, 0, len(argv))
-	found := false
-	for _, a := range argv {
-		if a == "--json" {
-			found = true
-			continue
-		}
-		out = append(out, a)
-	}
-	return out, found
-}
-
-// runStartArgs parses `start <ref> [--arg=value ...] [--help]`.
-func runStartArgs(ctx context.Context, rt *Runtime, args []string, asJSON bool) (int, error) {
-	if len(args) == 0 {
-		return ExitUserError, fmt.Errorf("%w: 用法 chaoslab start <plugin>/<case> [--arg=value ...]", plugin.ErrUserInput)
-	}
-	ref := args[0]
-	if strings.HasPrefix(ref, "-") {
-		return ExitUserError, fmt.Errorf("%w: start 需要 <plugin>/<case>", plugin.ErrUserInput)
-	}
-
-	kv := map[string]string{}
-	wantHelp := false
-	for _, a := range args[1:] {
-		if a == "--help" || a == "-h" {
-			wantHelp = true
-			continue
-		}
-		if !strings.HasPrefix(a, "--") {
-			return ExitUserError, fmt.Errorf("%w: 多余的参数 %q", plugin.ErrUserInput, a)
-		}
-		body := strings.TrimPrefix(a, "--")
-		k, v, ok := strings.Cut(body, "=")
-		if !ok {
-			return ExitUserError, fmt.Errorf("%w: 参数 %q 缺少 = 值", plugin.ErrUserInput, a)
-		}
-		kv[k] = v
-	}
-
-	if wantHelp {
-		return printStartHelp(ctx, rt, ref)
-	}
-	return RunStart(ctx, rt, ref, kv, asJSON)
-}
-
-func printStartHelp(ctx context.Context, rt *Runtime, ref string) (int, error) {
-	pluginName, caseName, err := splitRef(ref)
 	if err != nil {
 		return ExitUserError, err
 	}
-	lister := rt.Lister(pluginName)
-	if _, err := os.Stat(lister.PluginDir + "/plugin"); err != nil {
-		return ExitUserError, fmt.Errorf("%w: 插件 %s 未安装", plugin.ErrUserInput, pluginName)
+	return ExitOK, nil
+}
+
+func newRoot(rt *Runtime) *cobra.Command {
+	root := &cobra.Command{
+		Use:   "chaoslab",
+		Short: "本地故障演练环境",
+		Long: `起好带故障的环境，只给现象；你排查修复，改对了由插件定义的规则实测校验。
+
+场景来自插件，装一个才有东西可跑：
+  chaoslab plugin install ~/.local/share/chaoslab/plugins/k8s`,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if v, _ := cmd.Flags().GetBool("version"); v {
+				return failWith(RunVersion(jsonFlag(cmd)))
+			}
+			// Bare invocation is a mistake, not a success: a script that forgot
+			// its subcommand must not read as "went fine".
+			cmd.Help()
+			return fail(ExitUserError, "")
+		},
 	}
-	schema, err := lister.Schema(ctx)
-	if err != nil {
-		return ExitPluginErr, err
+	root.PersistentFlags().Bool("json", false, "机器可读输出")
+	root.PersistentFlags().Lookup("json").Usage = "机器可读输出"
+	// -v is what people type first.
+	root.Flags().BoolP("version", "v", false, "版本与构建信息")
+
+	root.CompletionOptions.DisableDefaultCmd = true
+	installHelp(root)
+	root.SetHelpCommand(&cobra.Command{
+		Use:   "help [命令]",
+		Short: "查看命令帮助",
+		RunE: func(c *cobra.Command, args []string) error {
+			target, _, err := root.Find(args)
+			if err != nil || target == nil {
+				return fail(ExitUserError, "没有这个命令：%v", args)
+			}
+			target.Help()
+			return nil
+		},
+	})
+
+	root.AddCommand(
+		newListCmd(rt),
+		newStartCmd(rt),
+		newCheckCmd(rt),
+		newStopCmd(rt, "stop", "清理环境并实测残留"),
+		newStopCmd(rt, "rm", "stop 的别名"),
+		newStatusCmd(rt),
+		newPluginCmd(rt),
+		newVersionCmd(),
+	)
+	return root
+}
+
+func jsonFlag(cmd *cobra.Command) bool {
+	v, _ := cmd.Flags().GetBool("json")
+	return v
+}
+
+func newListCmd(rt *Runtime) *cobra.Command {
+	return &cobra.Command{
+		Use:   "list [插件]",
+		Short: "列出场景",
+		Long:  "列出所有已装插件的场景。给出插件名则只列该插件的。",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			filter := ""
+			if len(args) == 1 {
+				filter = args[0]
+			}
+			return failWith(RunList(cmd.Context(), rt, filter, jsonFlag(cmd)))
+		},
 	}
-	cases, err := lister.List(ctx, "", nil)
-	if err != nil {
-		return ExitPluginErr, err
+}
+
+func newCheckCmd(rt *Runtime) *cobra.Command {
+	var watch bool
+	cmd := &cobra.Command{
+		Use:   "check <插件>/<场景>[#序号]",
+		Short: "判定是否修好",
+		Long: `判定场景是否已修复。退出码 0 修好，2 还没修好，3 检查本身出错。
+
+单次判定直接返回；--watch 每 3 秒重试，直到通过或超过该场景的 check_timeout。`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return failWith(RunCheck(cmd.Context(), rt, args[0], watch, jsonFlag(cmd)))
+		},
 	}
-	c, ok := findCase(cases, caseName)
-	if !ok {
-		return ExitUserError, fmt.Errorf("%w: 插件 %s 没有场景 %q", plugin.ErrUserInput, pluginName, caseName)
+	cmd.Flags().BoolVar(&watch, "watch", false, "轮询到通过或超时")
+	return cmd
+}
+
+func newStopCmd(rt *Runtime, use, short string) *cobra.Command {
+	var all bool
+	cmd := &cobra.Command{
+		Use:   use + " (<插件>/<场景>[#序号] | --all)",
+		Short: short,
+		Long:  "让插件销毁环境，然后框架自己实测插件声明的资源是否真的释放了。没清干净会标为 dirty 并拦住重试。",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if all {
+				if len(args) > 0 {
+					return fail(ExitUserError, "--all 不能和实例引用一起用")
+				}
+				return failWith(RunStopAll(cmd.Context(), rt))
+			}
+			if len(args) != 1 {
+				return fail(ExitUserError, "需要指定实例，或用 --all：chaoslab %s <插件>/<场景>", use)
+			}
+			return failWith(RunStop(cmd.Context(), rt, args[0], jsonFlag(cmd)))
+		},
+	}
+	cmd.Flags().BoolVar(&all, "all", false, "停掉所有存活实例")
+	return cmd
+}
+
+func newStatusCmd(rt *Runtime) *cobra.Command {
+	return &cobra.Command{
+		Use:   "status [<插件>/<场景>[#序号]]",
+		Short: "查看存活实例",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ref := ""
+			if len(args) == 1 {
+				ref = args[0]
+			}
+			return failWith(RunStatus(cmd.Context(), rt, ref, jsonFlag(cmd)))
+		},
+	}
+}
+
+func newVersionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "版本与构建信息",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return failWith(RunVersion(jsonFlag(cmd)))
+		},
+	}
+}
+
+func newPluginCmd(rt *Runtime) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "plugin",
+		Short: "管理插件",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return fail(ExitUserError, "需要子命令：install / uninstall / info / validate")
+		},
+	}
+	cmd.AddCommand(
+		&cobra.Command{
+			Use:   "install <目录|git-url>",
+			Short: "装插件",
+			Args:  cobra.ExactArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return failWith(RunPlugin(cmd.Context(), rt, "install", args, jsonFlag(cmd)))
+			},
+		},
+		&cobra.Command{
+			Use:   "uninstall <名字>",
+			Short: "卸插件，有存活实例时拒绝",
+			Args:  cobra.ExactArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return failWith(RunPlugin(cmd.Context(), rt, "uninstall", args, false))
+			},
+		},
+		&cobra.Command{
+			Use:   "info <名字>",
+			Short: "看插件支持的参数和场景",
+			Args:  cobra.ExactArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return failWith(RunPlugin(cmd.Context(), rt, "info", args, jsonFlag(cmd)))
+			},
+		},
+		&cobra.Command{
+			Use:   "validate <目录>",
+			Short: "写插件时自检，不执行 up",
+			Args:  cobra.ExactArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return failWith(RunPlugin(cmd.Context(), rt, "validate", args, false))
+			},
+		},
+	)
+	return cmd
+}
+
+// newStartCmd disables cobra's flag parsing on purpose: the flags a scenario
+// accepts are declared by the plugin at runtime, so --node-image etc. cannot be
+// registered ahead of time. The subcommand parses its own argv, and --help is
+// answered with the plugin's real parameter table.
+func newStartCmd(rt *Runtime) *cobra.Command {
+	return &cobra.Command{
+		Use:   "start <插件>/<场景> [--参数=值 ...]",
+		Short: "起环境，只给现象",
+		Long: `起一个场景的环境并注入故障，输出停在现象那一行，不告诉你原因。
+
+可用的参数由插件声明，用 --help 查看：
+  chaoslab start k8s/pod-pending --help`,
+		DisableFlagParsing: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return failWith(runStartArgs(cmd, rt, args))
+		},
+	}
+}
+
+// runStartArgs parses `start <ref> [--arg=value ...] [--json] [--help]`.
+func runStartArgs(cmd *cobra.Command, rt *Runtime, args []string) (int, error) {
+	var ref string
+	kv := map[string]string{}
+	asJSON := false
+	wantHelp := false
+
+	for _, a := range args {
+		switch {
+		case a == "--help" || a == "-h":
+			wantHelp = true
+		case a == "--json":
+			asJSON = true
+		case strings.HasPrefix(a, "--"):
+			k, v, ok := strings.Cut(strings.TrimPrefix(a, "--"), "=")
+			if !ok {
+				return ExitUserError, fmt.Errorf("参数 %q 缺少值，写成 --%s=<值>", a, k)
+			}
+			kv[k] = v
+		case strings.HasPrefix(a, "-"):
+			return ExitUserError, fmt.Errorf("未知选项 %q", a)
+		default:
+			if ref != "" {
+				return ExitUserError, fmt.Errorf("多余的参数 %q", a)
+			}
+			ref = a
+		}
 	}
 
-	fmt.Printf("%s/%s — %s\n\n", pluginName, c.ID, c.Title)
-	if len(schema.Args) == 0 {
-		fmt.Println("该场景没有可配置参数。")
-		return ExitOK, nil
+	if ref == "" {
+		return ExitUserError, errors.New("需要指定场景：chaoslab start <插件>/<场景>")
 	}
-	fmt.Println("参数：")
-	for _, a := range schema.Args {
-		fmt.Println(a.HelpLine())
+	if wantHelp {
+		return printStartHelp(cmd.Context(), rt, ref)
 	}
-	return ExitOK, nil
+	return RunStart(cmd.Context(), rt, ref, kv, asJSON)
 }

@@ -71,7 +71,7 @@ CHAOSLAB_VERSION=v0.1.0 CHAOSLAB_INSTALL_DIR=~/bin sh -c \
 > [!NOTE]
 > Windows 没有原生二进制，请在 [WSL](https://learn.microsoft.com/windows/wsl/install) 里用 Linux 版。状态文件用 `flock` 加锁，这个调用在 Windows 上不存在。
 
-从源码构建需要 Go 1.22+，框架无第三方依赖：
+从源码构建需要 Go 1.22+：
 
 ```bash
 git clone https://github.com/SoulChildTc/chaos-lab.git

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"text/tabwriter"
+	"strings"
 
 	"github.com/soulchildtc/chaos-lab/internal/plugin"
 )
@@ -16,13 +16,27 @@ type ListEntry struct {
 	Title  string `json:"title"`
 }
 
-// RunList prints every case of every installed plugin. A plugin that fails to
-// answer is reported on stderr and skipped, so one broken plugin does not hide
-// the rest.
-func RunList(ctx context.Context, rt *Runtime, asJSON bool) (int, error) {
+// RunList prints the cases of installed plugins. An empty filter means every
+// plugin; a filter naming an unknown or broken plugin is an error, not an empty
+// table. A plugin that fails to answer is reported on stderr and skipped, so one
+// broken plugin does not hide the rest.
+func RunList(ctx context.Context, rt *Runtime, filter string, asJSON bool) (int, error) {
 	names, err := plugin.Discover(rt.PluginsDir)
 	if err != nil {
 		return ExitUserError, err
+	}
+	if filter != "" {
+		found := false
+		for _, n := range names {
+			if n == filter {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return ExitUserError, fmt.Errorf("%w: 插件 %s 未安装", plugin.ErrUserInput, filter)
+		}
+		names = []string{filter}
 	}
 
 	entries := make([]ListEntry, 0, len(names))
@@ -44,10 +58,18 @@ func RunList(ctx context.Context, rt *Runtime, asJSON bool) (int, error) {
 		fmt.Println("没有可用的场景。用 chaoslab plugin install 安装插件。")
 		return ExitOK, nil
 	}
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "场景\t说明")
+	rows := make([][]string, 0, len(entries))
+	nameWidth := 0
 	for _, e := range entries {
-		fmt.Fprintf(w, "%s/%s\t%s\n", e.Plugin, e.Case, e.Title)
+		name := e.Plugin + "/" + e.Case
+		if w := displayWidth(name); w > nameWidth {
+			nameWidth = w
+		}
+		rows = append(rows, []string{name, e.Title})
 	}
-	return ExitOK, w.Flush()
+	fmt.Println(head("场景" + strings.Repeat(" ", nameWidth-displayWidth("场景")+2) + "说明"))
+	for _, r := range rows {
+		fmt.Println(r[0] + strings.Repeat(" ", nameWidth-displayWidth(r[0])+2) + r[1])
+	}
+	return ExitOK, nil
 }

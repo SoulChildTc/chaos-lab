@@ -155,17 +155,20 @@ func RunStop(ctx context.Context, rt *Runtime, ref string, asJSON bool) (int, er
 		if asJSON {
 			return ExitPluginErr, printJSON(out)
 		}
-		fmt.Printf("%s 未清理干净：%s\n", inst.ID, msg)
-		fmt.Printf("排查后可重试：chaoslab stop %s\n", inst.ID)
+		fmt.Printf("%s %s %s\n", glyphFail(), bad("未清理干净"), dim(inst.ID))
+		for _, line := range wrap(msg, 72) {
+			fmt.Println("  " + line)
+		}
+		fmt.Println(dim("  排查后重试：chaoslab rm " + inst.ID))
 		return ExitPluginErr, fmt.Errorf("%s 未清理干净：%s", inst.ID, msg)
 	}
 
 	if asJSON {
 		return ExitOK, printJSON(out)
 	}
-	fmt.Printf("%s 已清理\n", inst.ID)
+	fmt.Printf("%s %s %s\n", glyphOK(), ok("已清理"), dim(inst.ID))
 	if len(unverified) > 0 {
-		fmt.Printf("注意：以下 claim 框架未复查，由插件保证：%s\n", strings.Join(unverified, ", "))
+		fmt.Println(warn("  注意：以下 claim 框架未复查，由插件保证：") + strings.Join(unverified, ", "))
 	}
 	return ExitOK, nil
 }

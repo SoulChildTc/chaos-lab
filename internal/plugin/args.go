@@ -9,7 +9,7 @@ import (
 
 // ErrUserInput marks a mistake the user can fix (unknown flag, wrong type),
 // as opposed to a broken plugin. Callers map it to exit code 1.
-var ErrUserInput = errors.New("invalid input")
+var ErrUserInput = errors.New("用法错误")
 
 // Merge applies user-supplied key/value pairs on top of the schema defaults and
 // converts them to the declared types. An Arg with no Default stays absent
@@ -77,12 +77,20 @@ func coerceDefault(a Arg) any {
 
 // HelpLine renders one line for `start --help`.
 func (a Arg) HelpLine() string {
-	line := fmt.Sprintf("  --%s=<%s>", a.Name, a.Type)
+	return "  " + a.FlagName() + "  " + a.HelpSummary()
+}
+
+// FlagName is the flag as written on the command line.
+func (a Arg) FlagName() string { return fmt.Sprintf("--%s=<%s>", a.Name, a.Type) }
+
+// HelpSummary is the description, with the default appended when there is one.
+func (a Arg) HelpSummary() string {
+	s := a.Help
 	if a.Default != nil {
-		line += fmt.Sprintf("  (default: %v)", a.Default)
+		if s != "" {
+			s += " "
+		}
+		s += fmt.Sprintf("(默认 %v)", a.Default)
 	}
-	if a.Help != "" {
-		line += "  " + a.Help
-	}
-	return line
+	return s
 }

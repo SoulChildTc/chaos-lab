@@ -20,8 +20,8 @@ func RunPlugin(ctx context.Context, rt *Runtime, sub string, rest []string, asJS
 		if err != nil {
 			return ExitUserError, err
 		}
-		fmt.Printf("已安装插件 %s\n", name)
-		fmt.Printf("场景：chaoslab list\n")
+		fmt.Printf("%s %s %s\n", glyphOK(), ok("已安装"), bold(name))
+		fmt.Println(dim("  下一步：chaoslab list"))
 		return ExitOK, nil
 
 	case "uninstall":
@@ -35,7 +35,7 @@ func RunPlugin(ctx context.Context, rt *Runtime, sub string, rest []string, asJS
 		if err := plugin.Uninstall(rt.PluginsDir, rest[0], f.Instances); err != nil {
 			return ExitUserError, err
 		}
-		fmt.Printf("已卸载插件 %s\n", rest[0])
+		fmt.Printf("%s %s %s\n", glyphOK(), ok("已卸载"), bold(rest[0]))
 		return ExitOK, nil
 
 	case "info":
@@ -84,7 +84,7 @@ func RunPlugin(ctx context.Context, rt *Runtime, sub string, rest []string, asJS
 			fmt.Fprintf(os.Stderr, "警告：%s\n", w)
 		}
 		if len(warnings) == 0 {
-			fmt.Println("协议检查通过")
+			fmt.Printf("%s %s\n", glyphOK(), ok("协议检查通过"))
 		}
 		return ExitOK, nil
 
